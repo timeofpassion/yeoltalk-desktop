@@ -11,8 +11,10 @@ const { showPopup } = require("./popup")
 const BASE = "https://intranet.timeofpassion.com"
 const START = `${BASE}/talk`
 const ICON = path.join(__dirname, "build", "icon.png")
-const BADGE = path.join(__dirname, "build", "badge.png")
-const TRAY_UNREAD = path.join(__dirname, "build", "tray-unread.png")
+// 안 읽은 수 그림 — 1~9, 9+ (build/badge-N.png · build/tray-N.png)
+const numKey = (n) => (n > 9 ? "9p" : String(n))
+const BADGE = (n) => path.join(__dirname, "build", `badge-${numKey(n)}.png`)
+const TRAY_NUM = (n) => path.join(__dirname, "build", `tray-${numKey(n)}.png`)
 const RELEASES = "https://github.com/timeofpassion/yeoltalk-desktop/releases/latest"
 
 let win = null
@@ -84,7 +86,7 @@ function trayMenu() {
   const auto = app.getLoginItemSettings().openAtLogin
   return Menu.buildFromTemplate([
     { label: "열톡 열기", click: () => show() },
-    { label: "알림 미리보기", click: () => showPopup({ title: "알림 미리보기", sub: "열톡", body: "새 메시지가 오면 이렇게 화면 오른쪽 아래에 떠요. 누르면 그 대화방이 열려요. (평일 오전 9시~오후 7시)", onClick: () => show() }) },
+    { label: "알림 미리보기", click: () => { setUnreadMark(3); setTimeout(() => { marked = null; lastUnread = null }, 15000); showPopup({ title: "알림 미리보기", sub: "열톡", body: "새 메시지가 오면 이렇게 화면 오른쪽 아래에 떠요. 누르면 그 대화방이 열려요. (평일 오전 9시~오후 7시) 작업표시줄 아이콘엔 안 읽은 숫자가 붙어요.", onClick: () => show() }) } },
     { type: "separator" },
     { label: "PC 켤 때 자동 실행", type: "checkbox", checked: auto, click: (i) => app.setLoginItemSettings({ openAtLogin: i.checked }) },
     { type: "separator" },
@@ -123,15 +125,16 @@ async function poll() {
   }
 }
 
-// 안 읽은 게 있으면 작업표시줄 아이콘·트레이 아이콘에 빨간 점(카톡 PC처럼 한눈에)
+// [2026-10-18 대표 「상태표시줄에도 안 읽은 숫자가 떠서 밀린 게 보이게」] 작업표시줄 아이콘·트레이 아이콘에 빨간 숫자(1~9, 9+)
 let marked = null
 function setUnreadMark(unread) {
-  const on = unread > 0
-  if (on === marked) return
-  marked = on
+  const key = unread > 0 ? numKey(unread) : ""
+  if (key === marked) return
+  marked = key
   try {
-    win && win.setOverlayIcon(on ? nativeImage.createFromPath(BADGE) : null, on ? `안 읽은 메시지 ${unread}` : "")
-    tray && tray.setImage(nativeImage.createFromPath(on ? TRAY_UNREAD : ICON).resize({ width: 16, height: 16 }))
+    win && win.setOverlayIcon(unread > 0 ? nativeImage.createFromPath(BADGE(unread)) : null, unread > 0 ? `안 읽은 메시지 ${unread}` : "")
+    tray && tray.setImage(nativeImage.createFromPath(unread > 0 ? TRAY_NUM(unread) : ICON).resize({ width: 16, height: 16 }))
+    app.setBadgeCount(unread)
   } catch {}
 }
 

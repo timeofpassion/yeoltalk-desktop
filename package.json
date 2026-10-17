@@ -18,7 +18,7 @@
     "appId": "com.timeofpassion.yeoltalk",
     "productName": "열톡",
     "artifactName": "yeoltalk-setup.${ext}",
-    "files": ["main.js", "preload.js", "popup.js", "build/icon.png", "build/badge.png", "build/tray-unread.png"],
+    "files": ["main.js", "preload.js", "popup.js", "build/icon.png", "build/badge-*.png", "build/tray-*.png"],
     "directories": { "output": "dist" },
     "win": { "icon": "build/icon.png", "target": ["nsis"] },
     "nsis": {

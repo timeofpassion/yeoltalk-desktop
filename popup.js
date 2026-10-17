@@ -1,14 +1,16 @@
 // 네이트온식 알림창 — 화면 오른쪽 아래에서 올라오는 작은 창.
 // [2026-10-18 대표] "네이트온처럼 아래에 떠야 하는데 안 뜬다. 열톡은 업무시간에 알림을 확실하게 받고 인지해야 한다"
 // 윈도우 기본 알림은 「방해 금지」·알림 설정에 따라 조용히 묻힌다 → 프로그램이 자기 창을 직접 띄운다(항상 위, 포커스는 안 뺏음).
-const { BrowserWindow, screen } = require("electron")
+const { BrowserWindow, screen, powerMonitor } = require("electron")
 const path = require("path")
 const fs = require("fs")
 
 const W = 340
 const H = 104
 const GAP = 8
-const STAY_MS = 8000
+// [2026-10-18 대표 「너무 금방 사라진다」] 8초 → 15초. 자리를 비웠으면(30초 넘게 키보드·마우스 안 씀) 돌아올 때까지 안 닫힌다
+const STAY_MS = 15000
+const AWAY_SEC = 30
 const MAX = 3
 const open = [] // 아래에서 위로 쌓인 순서
 
@@ -40,6 +42,9 @@ function html({ title, body, sub }) {
   try{const a=new AudioContext(),o=a.createOscillator(),g=a.createGain();o.type="sine";o.frequency.setValueAtTime(880,a.currentTime);o.frequency.setValueAtTime(1320,a.currentTime+.09);g.gain.setValueAtTime(.0001,a.currentTime);g.gain.exponentialRampToValueAtTime(.25,a.currentTime+.02);g.gain.exponentialRampToValueAtTime(.0001,a.currentTime+.35);o.connect(g).connect(a.destination);o.start();o.stop(a.currentTime+.36)}catch(e){}
   document.getElementById("x").onclick=(e)=>{e.stopPropagation();location.hash="close"}
   document.getElementById("c").onclick=()=>{location.hash="open"}
+  // 마우스를 올려 두는 동안은 안 닫힌다
+  document.getElementById("c").onmouseenter=()=>{location.hash="hold"}
+  document.getElementById("c").onmouseleave=()=>{location.hash="go"}
   </script></body></html>`
 }
 
@@ -54,7 +59,7 @@ function layout() {
 function close(p) {
   const i = open.indexOf(p)
   if (i >= 0) open.splice(i, 1)
-  clearTimeout(p.timer)
+  clearInterval(p.timer)
   if (!p.win.isDestroyed()) p.win.destroy()
   layout()
 }
@@ -73,15 +78,24 @@ function showPopup({ title, body, sub = "열톡", onClick }) {
   layout()
   win.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html({ title, body, sub })))
   win.once("ready-to-show", () => win.showInactive())
+  // 닫힘 시계: 15초. 단 자리를 비운 동안·마우스를 올린 동안은 멈춘다
+  p.left = STAY_MS
+  p.hold = false
+  p.timer = setInterval(() => {
+    if (win.isDestroyed()) return clearInterval(p.timer)
+    let away = false
+    try { away = powerMonitor.getSystemIdleTime() >= AWAY_SEC } catch {}
+    if (p.hold || away) return
+    p.left -= 1000
+    if (p.left <= 0) close(p)
+  }, 1000)
   win.webContents.on("did-navigate-in-page", (_e, url) => {
     if (url.endsWith("#open")) { close(p); onClick && onClick() }
     else if (url.endsWith("#close")) close(p)
+    else if (url.endsWith("#hold")) p.hold = true
+    else if (url.endsWith("#go")) { p.hold = false; p.left = Math.max(p.left, 5000) }
   })
-  // 마우스를 올려 두면 안 닫힌다
-  const arm = () => { clearTimeout(p.timer); p.timer = setTimeout(() => close(p), STAY_MS) }
-  win.on("closed", () => clearTimeout(p.timer))
-  arm()
-  win.webContents.on("before-mouse-event", (_e, m) => { if (m.type === "mouseEnter" || m.type === "mouseMove") arm() })
+  win.on("closed", () => clearInterval(p.timer))
   return p
 }
 
