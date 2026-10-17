@@ -1,7 +1,7 @@
 {
   "name": "yeoltalk",
   "productName": "열톡",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "열정의시간 사내 메신저 열톡 — PC 프로그램",
   "author": "열정의시간",
   "main": "main.js",
@@ -18,7 +18,7 @@
     "appId": "com.timeofpassion.yeoltalk",
     "productName": "열톡",
     "artifactName": "yeoltalk-setup.${ext}",
-    "files": ["main.js", "preload.js", "build/icon.png"],
+    "files": ["main.js", "preload.js", "popup.js", "build/icon.png", "build/badge.png", "build/tray-unread.png"],
     "directories": { "output": "dist" },
     "win": { "icon": "build/icon.png", "target": ["nsis"] },
     "nsis": {
