@@ -1,7 +1,7 @@
 {
   "name": "passion-slack-desktop",
   "productName": "슬랙",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "열정의시간 통합 슬랙 PC 프로그램",
   "author": "열정의시간",
   "private": true,

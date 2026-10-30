@@ -6,6 +6,9 @@ function classifyUrl(value) {
     const url = new URL(value)
     if (url.username || url.password) return "blocked"
     if (url.origin === BASE) {
+      if (url.pathname.startsWith("/api/chat/files/v1/")) {
+        return /^\/api\/chat\/files\/v1\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9][A-Za-z0-9._-]{0,220}$/.test(url.pathname) && [...url.searchParams.keys()].every(k => k === "download") && url.searchParams.getAll("download").length <= 1 ? "attachment" : "blocked"
+      }
       if (["/", "/dashboard", "/slack", "/talk"].includes(url.pathname) || /^\/talk\/[a-z0-9_-]{1,100}$/i.test(url.pathname) || isLoginPath(url.pathname)) return "internal"
       const documents = ["/approvals", "/tasks", "/docs", "/clients", "/sign", "/s", "/finance/expenses", "/api/chat/files", "/api/files", "/api/attachments", "/uploads"]
       return documents.some(p => url.pathname === p || url.pathname.startsWith(p + "/")) ? "external" : "blocked"
@@ -23,6 +26,7 @@ function requestDecision(details) {
   if (details.resourceType === "mainFrame") {
     const target = returnAfterLogin(details.url)
     if (target) return { redirectURL: target }
+    if (classifyUrl(details.url) === "attachment") return {}
   }
   return classifyUrl(details.url) === "internal" ? {} : { cancel: true }
 }

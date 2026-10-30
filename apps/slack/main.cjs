@@ -33,7 +33,9 @@ function makeWindow() {
   win.once("ready-to-show", () => show(win))
   win.on("page-title-updated", e => e.preventDefault())
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (classifyUrl(url) === "internal") {
+    if (classifyUrl(url) === "attachment") {
+      win.webContents.downloadURL(url)
+    } else if (classifyUrl(url) === "internal") {
       show(win, url)
     } else {
       // 업무 문서 등은 브라우저에서 본인 계정의 권한으로 연다.
@@ -42,7 +44,8 @@ function makeWindow() {
     return { action: "deny" }
   })
   const navigation = (e, url) => {
-    if (classifyUrl(url) !== "internal") { e.preventDefault(); openExternal(url) }
+    if (classifyUrl(url) === "attachment") { e.preventDefault(); win.webContents.downloadURL(url) }
+    else if (classifyUrl(url) !== "internal") { e.preventDefault(); openExternal(url) }
   }
   win.webContents.on("will-navigate", navigation)
   win.webContents.on("will-redirect", navigation)
