@@ -17,7 +17,8 @@ app.whenReady().then(async () => {
     assert.equal(cookies.find(c => c.name === "fixture-session")?.value, "test-only-not-a-company-login")
     fs.writeFileSync(path.join(evidence, "session-read.json"), JSON.stringify({ persistedAcrossRestart: true, realEmployeeLogin: false }))
   } else if (mode === "update-download") {
-    const dist = path.resolve(__dirname, "../dist"), file = "passion-slack-setup-0.1.0.exe"
+    const version = require("../package.json").version
+    const dist = path.resolve(__dirname, "../dist"), file = `passion-slack-setup-${version}.exe`
     const source = path.join(dist, file)
     const server = http.createServer((req, res) => {
       const requested = new URL(req.url, "http://localhost").pathname
@@ -40,7 +41,7 @@ app.whenReady().then(async () => {
       updater.disableWebInstaller = true
       updater.logger = { info() {}, warn() {}, error() {} }
       const result = await updater.checkForUpdates()
-      assert.equal(result.updateInfo.version, "0.1.0")
+      assert.equal(result.updateInfo.version, version)
       const files = await result.downloadPromise
       const hash = filename => crypto.createHash("sha512").update(fs.readFileSync(filename)).digest("hex")
       assert.equal(hash(files[0]), hash(source))

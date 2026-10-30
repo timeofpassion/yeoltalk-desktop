@@ -1,7 +1,7 @@
 const { app, BrowserWindow, Tray, Menu, Notification, nativeImage, shell, dialog, session } = require("electron")
 const path = require("node:path")
 const fs = require("node:fs")
-const { BASE, START, PARTITION, classifyUrl, returnAfterLogin, roomLink, notificationCandidates, alertHours } = require("./rules.cjs")
+const { BASE, START, PARTITION, classifyUrl, returnAfterLogin, roomLink, notificationCandidates, alertHours, requestDecision } = require("./rules.cjs")
 const { connectUpdater } = require("./updater.cjs")
 
 app.setName("열정 슬랙")
@@ -33,11 +33,11 @@ function makeWindow(isTalk = false) {
   win.on("page-title-updated", e => e.preventDefault())
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (classifyUrl(url) === "internal") {
-      // 결재·문서·첨부도 로그인 세션은 공유하며 별도 창으로 연다.
-      return { action: "allow", overrideBrowserWindowOptions: { width: 1100, height: 800, icon: iconPath,
-        webPreferences: { partition: PARTITION, nodeIntegration: false, contextIsolation: true, sandbox: true } } }
+      show(win, url)
+    } else {
+      // 업무 문서 등은 브라우저에서 본인 계정의 권한으로 연다.
+      openExternal(url)
     }
-    openExternal(url)
     return { action: "deny" }
   })
   const navigation = (e, url) => {
@@ -45,15 +45,14 @@ function makeWindow(isTalk = false) {
   }
   win.webContents.on("will-navigate", navigation)
   win.webContents.on("will-redirect", navigation)
-  win.webContents.on("did-create-window", child => {
-    child.webContents.on("will-navigate", navigation)
-    child.webContents.on("will-redirect", navigation)
-    child.webContents.setWindowOpenHandler(() => ({ action: "deny" }))
-  })
   win.webContents.on("will-attach-webview", e => e.preventDefault())
   const restoreHome = (_e, url) => {
     const target = returnAfterLogin(url, isTalk)
     if (target) win.loadURL(target).catch(() => safeLog("login-return-failed"))
+    else if (classifyUrl(url) !== "internal" && !url.startsWith("file:")) {
+      openExternal(url)
+      show(win, isTalk ? `${BASE}/talk` : START)
+    }
   }
   win.webContents.on("did-navigate", restoreHome)
   win.webContents.on("did-navigate-in-page", restoreHome)
@@ -132,7 +131,15 @@ else {
   app.on("before-quit", () => { quitting = true })
   app.on("window-all-closed", event => event.preventDefault())
   app.whenReady().then(() => {
-    session.fromPartition(PARTITION).setPermissionRequestHandler((_wc, permission, callback) => callback(permission === "notifications"))
+    const chatSession = session.fromPartition(PARTITION)
+    chatSession.setPermissionRequestHandler((_wc, permission, callback) => callback(permission === "notifications"))
+    chatSession.webRequest.onBeforeRequest({ urls: ["https://*/*", "http://*/*"] }, (details, callback) => {
+      callback(requestDecision(details, details.webContentsId === talkWindow?.webContents.id))
+    })
+    chatSession.webRequest.onBeforeSendHeaders({ urls: ["https://*/*", "http://*/*"] }, (details, callback) => {
+      const decision = requestDecision(details, details.webContentsId === talkWindow?.webContents.id)
+      callback(decision.cancel ? { cancel: true } : { requestHeaders: details.requestHeaders })
+    })
     mainWindow = makeWindow()
     tray = new Tray(nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 }))
     tray.on("click", () => show(mainWindow))

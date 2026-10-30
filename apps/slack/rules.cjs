@@ -5,9 +5,22 @@ function classifyUrl(value) {
   try {
     const url = new URL(value)
     if (url.username || url.password) return "blocked"
-    if (url.origin === BASE) return "internal"
+    if (url.origin === BASE && (["/", "/dashboard", "/slack", "/talk"].includes(url.pathname) || isLoginPath(url.pathname))) return "internal"
     return ["https:", "http:", "mailto:"].includes(url.protocol) ? "external" : "blocked"
   } catch { return "blocked" }
+}
+// 문서 전환과 Next.js의 SPA 페이지 요청을 모두 제한한다. 일반 API·첨부 요청은 서버 권한 검사를 따른다.
+function requestDecision(details, isTalk = false) {
+  let url
+  try { url = new URL(details.url) } catch { return { cancel: true } }
+  const pageRequest = details.resourceType === "mainFrame" || url.searchParams.has("_rsc") ||
+    Object.entries(details.requestHeaders || {}).some(([name, value]) => name.toLowerCase() === "rsc" && value === "1")
+  if (!pageRequest) return {}
+  if (details.resourceType === "mainFrame") {
+    const target = returnAfterLogin(details.url, isTalk)
+    if (target) return { redirectURL: target }
+  }
+  return classifyUrl(details.url) === "internal" ? {} : { cancel: true }
 }
 function isLoginPath(pathname) {
   return ["/login", "/change-password", "/auth-error", "/api/auth"].some(p => pathname === p || pathname.startsWith(p + "/"))
@@ -35,4 +48,4 @@ function alertHours(now = new Date()) {
   const day = k.getUTCDay(), minute = k.getUTCHours() * 60 + k.getUTCMinutes()
   return day > 0 && day < 6 && minute >= 540 && minute < 1140
 }
-module.exports = { BASE, START, PARTITION, classifyUrl, isLoginPath, returnAfterLogin, roomLink, notificationCandidates, alertHours }
+module.exports = { BASE, START, PARTITION, classifyUrl, isLoginPath, returnAfterLogin, roomLink, notificationCandidates, alertHours, requestDecision }

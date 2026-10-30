@@ -1,5 +1,18 @@
 const test = require("node:test"), assert = require("node:assert/strict")
-const { BASE, START, PARTITION, classifyUrl, returnAfterLogin, roomLink, notificationCandidates, alertHours } = require("../rules.cjs")
+const { BASE, START, PARTITION, classifyUrl, returnAfterLogin, roomLink, notificationCandidates, alertHours, requestDecision } = require("../rules.cjs")
+
+test("앱 안에서는 슬랙·열톡·로그인만 열고 문서 등은 본인 브라우저로 연다", () => {
+  for (const p of ["/slack?c=mine", "/talk", "/login", "/api/auth/callback/credentials"]) assert.equal(classifyUrl(BASE + p), "internal")
+  for (const p of ["/ceo", "/best3", "/control", "/settings", "/clients/1", "/slack-other"]) assert.equal(classifyUrl(BASE + p), "external")
+})
+
+test("페이지 이동과 SPA 서버 렌더링도 창 경계를 지키되 채팅 API·파일은 유지", () => {
+  assert.deepEqual(requestDecision({ url: BASE + "/dashboard", resourceType: "mainFrame" }), { redirectURL: START })
+  assert.deepEqual(requestDecision({ url: BASE + "/ceo?_rsc=abc", resourceType: "xhr", requestHeaders: { RSC: "1" } }), { cancel: true })
+  assert.deepEqual(requestDecision({ url: BASE + "/api/chat/inbox", resourceType: "xhr" }), {})
+  assert.deepEqual(requestDecision({ url: "https://files.example.org/a.pdf", resourceType: "xhr" }), {})
+  assert.deepEqual(requestDecision({ url: BASE + "/slack?c=mine", resourceType: "mainFrame" }), {})
+})
 test("내부 슬랙·열톡은 같은 서버를 쓰고 기존 열톡 프로필과 분리", () => {
   assert.equal(START, BASE + "/slack"); assert.equal(PARTITION, "persist:passion-slack")
 })
