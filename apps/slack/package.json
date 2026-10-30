@@ -1,8 +1,8 @@
 {
   "name": "passion-slack-desktop",
-  "productName": "열정 슬랙",
+  "productName": "슬랙",
   "version": "0.1.2",
-  "description": "열정의시간 내부 슬랙 PC 프로그램",
+  "description": "열정의시간 통합 슬랙 PC 프로그램",
   "author": "열정의시간",
   "private": true,
   "main": "main.cjs",
@@ -20,7 +20,7 @@
   },
   "build": {
     "appId": "com.timeofpassion.slack",
-    "productName": "열정 슬랙",
+    "productName": "슬랙",
     "artifactName": "passion-slack-setup-${version}.${ext}",
     "files": [
       "*.cjs",
@@ -52,7 +52,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "열정 슬랙",
+      "shortcutName": "슬랙",
       "runAfterFinish": true,
       "installerIcon": "assets/icon.ico",
       "uninstallerIcon": "assets/icon.ico",

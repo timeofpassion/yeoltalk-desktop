@@ -14,14 +14,14 @@ function classifyUrl(value) {
   } catch { return "blocked" }
 }
 // 문서 전환과 Next.js의 SPA 페이지 요청을 모두 제한한다. 일반 API·첨부 요청은 서버 권한 검사를 따른다.
-function requestDecision(details, isTalk = false) {
+function requestDecision(details) {
   let url
   try { url = new URL(details.url) } catch { return { cancel: true } }
   const pageRequest = details.resourceType === "mainFrame" || url.searchParams.has("_rsc") ||
     Object.entries(details.requestHeaders || {}).some(([name, value]) => name.toLowerCase() === "rsc" && value === "1")
   if (!pageRequest) return {}
   if (details.resourceType === "mainFrame") {
-    const target = returnAfterLogin(details.url, isTalk)
+    const target = returnAfterLogin(details.url)
     if (target) return { redirectURL: target }
   }
   return classifyUrl(details.url) === "internal" ? {} : { cancel: true }
@@ -29,10 +29,20 @@ function requestDecision(details, isTalk = false) {
 function isLoginPath(pathname) {
   return ["/login", "/change-password", "/auth-error", "/api/auth"].some(p => pathname === p || pathname.startsWith(p + "/"))
 }
-function returnAfterLogin(value, isTalk = false) {
+// 로그인 완료·옛 열톡 주소 모두 한 슬랙 창으로 모은다. 방·스레드 링크는 유지한다.
+function returnAfterLogin(value) {
   if (classifyUrl(value) !== "internal") return null
   const url = new URL(value)
-  if (["/", "/dashboard"].includes(url.pathname)) return isTalk ? `${BASE}/talk` : START
+  if (["/", "/dashboard"].includes(url.pathname)) return START
+  if (url.pathname === "/talk" || url.pathname.startsWith("/talk/")) {
+    const room = url.pathname.slice("/talk/".length)
+    url.pathname = "/slack"
+    if (room) url.searchParams.set("c", room)
+    // SlackPage는 메시지 딥링크를 m으로 읽는다. 이미 지정된 m은 덮어쓰지 않는다.
+    if (!url.searchParams.has("m") && url.searchParams.has("thread")) url.searchParams.set("m", url.searchParams.get("thread"))
+    url.searchParams.delete("thread")
+    return url.href
+  }
   return null
 }
 function roomLink(id) {
