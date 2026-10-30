@@ -6,4 +6,4 @@ webFrame.insertCSS(`
   main[data-main] { margin-left: 0 !important; padding-bottom: 0 !important; }
 `)
 // 홈페이지에는 OS 권한·쿠키·파일 API를 노출하지 않는다.
-contextBridge.exposeInMainWorld("yeoltalkDesktop", Object.freeze({ version: "0.1.1", product: "passion-slack" }))
+contextBridge.exposeInMainWorld("yeoltalkDesktop", Object.freeze({ version: "0.1.2", product: "passion-slack" }))

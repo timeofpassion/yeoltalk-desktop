@@ -6,7 +6,7 @@ function classifyUrl(value) {
     const url = new URL(value)
     if (url.username || url.password) return "blocked"
     if (url.origin === BASE) {
-      if (["/", "/dashboard", "/slack", "/talk"].includes(url.pathname) || isLoginPath(url.pathname)) return "internal"
+      if (["/", "/dashboard", "/slack", "/talk"].includes(url.pathname) || /^\/talk\/[a-z0-9_-]{1,100}$/i.test(url.pathname) || isLoginPath(url.pathname)) return "internal"
       const documents = ["/approvals", "/tasks", "/docs", "/clients", "/sign", "/s", "/finance/expenses", "/api/chat/files", "/api/files", "/api/attachments", "/uploads"]
       return documents.some(p => url.pathname === p || url.pathname.startsWith(p + "/")) ? "external" : "blocked"
     }
@@ -38,6 +38,18 @@ function returnAfterLogin(value, isTalk = false) {
 function roomLink(id) {
   return /^[a-z0-9_-]{1,100}$/i.test(id ?? "") ? `${START}?c=${encodeURIComponent(id)}` : START
 }
+function unreadFor(room) {
+  const count = n => Number.isSafeInteger(n) && n > 0 ? n : 0
+  if (room.hidden) return 0
+  // inbox의 muted unread는 직접 멘션 수다. 이관된 과거 글은 음소거 합계에서 뺀다.
+  return count(room.unread) + (room.muted ? 0 : count(room.slackUnread))
+}
+function roomTitle(room, names = new Map()) {
+  if (room.notify) return "업무 알림"
+  if (room.kind === "dm") return names.get(room.otherId) || "1:1 대화"
+  if (room.kind === "ai") return room.persona?.name || "베스타"
+  return `${room.kind === "channel" ? "# " : ""}${room.name || "대화"}`
+}
 function notificationCandidates(previous, rooms) {
   if (!previous) return [] // 첫 로그인 때 과거 글로 알림을 쏟지 않는다.
   return rooms.filter(r => {
@@ -52,4 +64,4 @@ function alertHours(now = new Date()) {
   const day = k.getUTCDay(), minute = k.getUTCHours() * 60 + k.getUTCMinutes()
   return day > 0 && day < 6 && minute >= 540 && minute < 1140
 }
-module.exports = { BASE, START, PARTITION, classifyUrl, isLoginPath, returnAfterLogin, roomLink, notificationCandidates, alertHours, requestDecision }
+module.exports = { BASE, START, PARTITION, classifyUrl, isLoginPath, returnAfterLogin, roomLink, unreadFor, roomTitle, notificationCandidates, alertHours, requestDecision }

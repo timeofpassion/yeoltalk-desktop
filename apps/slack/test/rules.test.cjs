@@ -2,7 +2,7 @@ const test = require("node:test"), assert = require("node:assert/strict")
 const { BASE, START, PARTITION, classifyUrl, returnAfterLogin, roomLink, notificationCandidates, alertHours, requestDecision } = require("../rules.cjs")
 
 test("앱 안에서는 슬랙·열톡·로그인만 열고 문서 등은 본인 브라우저로 연다", () => {
-  for (const p of ["/slack?c=mine", "/talk", "/login", "/api/auth/callback/credentials"]) assert.equal(classifyUrl(BASE + p), "internal")
+  for (const p of ["/slack?c=mine", "/talk", "/talk/room123", "/login", "/api/auth/callback/credentials"]) assert.equal(classifyUrl(BASE + p), "internal")
   for (const p of ["/ceo", "/best3", "/control", "/settings", "/payroll", "/finance/bank", "/slack-other"]) assert.equal(classifyUrl(BASE + p), "blocked")
   for (const p of ["/clients/1", "/approvals/my-doc", "/tasks/my-task", "/docs/my-doc"]) assert.equal(classifyUrl(BASE + p), "external")
 })
