@@ -1,0 +1,36 @@
+name: 내부 슬랙 Windows 설치파일
+on:
+  push:
+    branches: [main]
+    paths: ["apps/slack/**", ".github/workflows/slack-release.yml"]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: passion-slack-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/slack/package-lock.json
+      - run: npm ci --prefix apps/slack
+      - run: npm test --prefix apps/slack
+      - run: npm run dist --prefix apps/slack
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - run: node apps/slack/scripts/publish.cjs --publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: passion-slack-windows
+          path: |
+            apps/slack/dist/passion-slack-setup-*.exe
+            apps/slack/dist/latest.yml
+            apps/slack/dist/*.blockmap
