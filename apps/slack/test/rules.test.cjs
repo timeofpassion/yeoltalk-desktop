@@ -3,7 +3,8 @@ const { BASE, START, PARTITION, classifyUrl, returnAfterLogin, roomLink, notific
 
 test("앱 안에서는 슬랙·열톡·로그인만 열고 문서 등은 본인 브라우저로 연다", () => {
   for (const p of ["/slack?c=mine", "/talk", "/login", "/api/auth/callback/credentials"]) assert.equal(classifyUrl(BASE + p), "internal")
-  for (const p of ["/ceo", "/best3", "/control", "/settings", "/clients/1", "/slack-other"]) assert.equal(classifyUrl(BASE + p), "external")
+  for (const p of ["/ceo", "/best3", "/control", "/settings", "/payroll", "/finance/bank", "/slack-other"]) assert.equal(classifyUrl(BASE + p), "blocked")
+  for (const p of ["/clients/1", "/approvals/my-doc", "/tasks/my-task", "/docs/my-doc"]) assert.equal(classifyUrl(BASE + p), "external")
 })
 
 test("페이지 이동과 SPA 서버 렌더링도 창 경계를 지키되 채팅 API·파일은 유지", () => {

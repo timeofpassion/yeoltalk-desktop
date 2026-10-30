@@ -5,7 +5,11 @@ function classifyUrl(value) {
   try {
     const url = new URL(value)
     if (url.username || url.password) return "blocked"
-    if (url.origin === BASE && (["/", "/dashboard", "/slack", "/talk"].includes(url.pathname) || isLoginPath(url.pathname))) return "internal"
+    if (url.origin === BASE) {
+      if (["/", "/dashboard", "/slack", "/talk"].includes(url.pathname) || isLoginPath(url.pathname)) return "internal"
+      const documents = ["/approvals", "/tasks", "/docs", "/clients", "/sign", "/s", "/finance/expenses", "/api/chat/files", "/api/files", "/api/attachments", "/uploads"]
+      return documents.some(p => url.pathname === p || url.pathname.startsWith(p + "/")) ? "external" : "blocked"
+    }
     return ["https:", "http:", "mailto:"].includes(url.protocol) ? "external" : "blocked"
   } catch { return "blocked" }
 }

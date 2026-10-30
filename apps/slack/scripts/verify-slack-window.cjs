@@ -2,7 +2,10 @@
 const { app, BrowserWindow } = require("electron")
 const fs = require("node:fs"), path = require("node:path"), http = require("node:http"), assert = require("node:assert/strict")
 const { BASE, START, requestDecision } = require("../rules.cjs")
+// 화면 없는 시험 창의 캡처는 소프트웨어 렌더러로 고정한다(Windows GPU Viz 캡처 오류 방지).
+app.disableHardwareAcceleration()
 const evidence = process.argv[2]
+let phase = "앱 준비"
 if (!evidence || !path.isAbsolute(evidence)) throw new Error("시험 결과 절대 경로가 필요합니다")
 fs.mkdirSync(evidence, { recursive: true })
 app.setPath("userData", path.join(evidence, "fixture-profile"))
@@ -21,12 +24,14 @@ app.whenReady().then(async () => {
   try {
     await win.loadURL(`http://127.0.0.1:${server.address().port}/slack`)
     async function check(label) {
+      phase = label
       const result = await win.webContents.executeJavaScript(`({hidden:[...document.querySelectorAll('[data-chrome]')].every(el=>getComputedStyle(el).display==='none'),left:document.querySelector('main').getBoundingClientRect().left,padding:getComputedStyle(document.querySelector('main')).paddingBottom,chatVisible:document.querySelector('.conversation').getBoundingClientRect().width>0,bridge:window.yeoltalkDesktop,inputEnabled:!document.querySelector('input').disabled})`)
       assert.equal(result.hidden, true); assert.equal(result.left, 0); assert.equal(result.padding, "0px"); assert.equal(result.chatVisible, true); assert.equal(result.inputEnabled, true)
       assert.equal(result.bridge.product, "passion-slack"); assert.equal(result.bridge.version, require("../package.json").version)
       rows.push({ label, ...result })
     }
     await check("1360px 최초 표시")
+    phase = "1360px 화면 캡처"
     fs.writeFileSync(path.join(evidence, "slack-only-1360.png"), (await win.webContents.capturePage()).toPNG())
     await win.webContents.executeJavaScript(`history.pushState({},'', '/slack?c=fixture'); document.querySelector('[data-chrome]').style.display='contents'`)
     await check("SPA 이동·인라인 표시 시도")
@@ -34,6 +39,7 @@ app.whenReady().then(async () => {
     await check("새 문서로 재진입")
     win.setContentSize(360, 800)
     await check("360px 창")
+    phase = "360px 화면 캡처"
     fs.writeFileSync(path.join(evidence, "slack-only-360.png"), (await win.webContents.capturePage()).toPNG())
     // 회사 서버에 보내지 않고 독립 시험 세션에서만 HTTPS를 가로채 실제 Electron 요청 훅을 검사한다.
     const isolated = win.webContents.session
@@ -55,8 +61,8 @@ app.whenReady().then(async () => {
     await check("로그인 완료 경로를 슬랙으로 복귀")
     await assert.rejects(win.loadURL(BASE + "/ceo"))
     assert.deepEqual(errors, [])
-    fs.writeFileSync(path.join(evidence, "slack-window.json"), JSON.stringify({ fixtureOnly: true, actualEmployeeLoginTested: false,
+    fs.writeFileSync(path.join(evidence, "slack-window.json"), JSON.stringify({ fixtureOnly: true, softwareRenderer: true, actualEmployeeLoginTested: false,
       rows, nativePageBoundary: { forbiddenDocumentBlocked: true, forbiddenRscQueryBlocked: requests[0], forbiddenRscHeaderBlocked: requests[1], chatApiAllowed: requests[2] }, preloadErrors: errors }, null, 2))
   } finally { win.destroy(); await new Promise(resolve => server.close(resolve)) }
   app.quit()
-}).catch(error => { fs.writeFileSync(path.join(evidence, "slack-window-error.txt"), error.stack); app.exit(1) })
+}).catch(error => { fs.writeFileSync(path.join(evidence, "slack-window-error.txt"), `${phase}\n${error.stack}`); app.exit(1) })
