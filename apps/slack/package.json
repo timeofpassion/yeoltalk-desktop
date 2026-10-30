@@ -1,8 +1,8 @@
 {
   "name": "passion-slack-desktop",
-  "productName": "열정 슬랙",
-  "version": "0.1.1",
-  "description": "열정의시간 내부 슬랙 PC 프로그램",
+  "productName": "슬랙",
+  "version": "0.1.2",
+  "description": "열정의시간 통합 슬랙 PC 프로그램",
   "author": "열정의시간",
   "private": true,
   "main": "main.cjs",
@@ -11,22 +11,51 @@
     "test": "node --test test/*.test.cjs",
     "dist": "electron-builder --win nsis --x64 --publish never"
   },
-  "dependencies": { "electron-updater": "6.8.11" },
-  "devDependencies": { "electron": "45.1.0", "electron-builder": "26.18.0" },
+  "dependencies": {
+    "electron-updater": "6.8.11"
+  },
+  "devDependencies": {
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0"
+  },
   "build": {
     "appId": "com.timeofpassion.slack",
-    "productName": "열정 슬랙",
+    "productName": "슬랙",
     "artifactName": "passion-slack-setup-${version}.${ext}",
-    "files": ["*.cjs", "assets/**", "!test/**"],
-    "directories": { "output": "dist", "buildResources": "assets" },
+    "files": [
+      "*.cjs",
+      "assets/**",
+      "!test/**"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    },
     "asar": true,
-    "publish": [{ "provider": "generic", "url": "https://github.com/timeofpassion/yeoltalk-desktop/releases/download/passion-slack-updates/" }],
-    "win": { "target": ["nsis"], "icon": "assets/icon.ico", "signExecutable": false },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://github.com/timeofpassion/yeoltalk-desktop/releases/download/passion-slack-updates/"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "assets/icon.ico",
+      "signExecutable": false
+    },
     "nsis": {
-      "oneClick": false, "perMachine": false, "allowElevation": false,
-      "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true,
-      "createStartMenuShortcut": true, "shortcutName": "열정 슬랙", "runAfterFinish": true,
-      "installerIcon": "assets/icon.ico", "uninstallerIcon": "assets/icon.ico",
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "슬랙",
+      "runAfterFinish": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
       "deleteAppDataOnUninstall": false
     }
   }

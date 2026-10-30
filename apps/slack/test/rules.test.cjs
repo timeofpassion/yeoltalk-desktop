@@ -2,7 +2,7 @@ const test = require("node:test"), assert = require("node:assert/strict")
 const { BASE, START, PARTITION, classifyUrl, returnAfterLogin, roomLink, notificationCandidates, alertHours, requestDecision } = require("../rules.cjs")
 
 test("앱 안에서는 슬랙·열톡·로그인만 열고 문서 등은 본인 브라우저로 연다", () => {
-  for (const p of ["/slack?c=mine", "/talk", "/login", "/api/auth/callback/credentials"]) assert.equal(classifyUrl(BASE + p), "internal")
+  for (const p of ["/slack?c=mine", "/talk", "/talk/room123", "/login", "/api/auth/callback/credentials"]) assert.equal(classifyUrl(BASE + p), "internal")
   for (const p of ["/ceo", "/best3", "/control", "/settings", "/payroll", "/finance/bank", "/slack-other"]) assert.equal(classifyUrl(BASE + p), "blocked")
   for (const p of ["/clients/1", "/approvals/my-doc", "/tasks/my-task", "/docs/my-doc"]) assert.equal(classifyUrl(BASE + p), "external")
 })
@@ -17,11 +17,32 @@ test("페이지 이동과 SPA 서버 렌더링도 창 경계를 지키되 채팅
 test("내부 슬랙·열톡은 같은 서버를 쓰고 기존 열톡 프로필과 분리", () => {
   assert.equal(START, BASE + "/slack"); assert.equal(PARTITION, "persist:passion-slack")
 })
-test("로그인 후 대시보드에서 각 원래 창으로 복귀", () => {
+test("로그인 후 대시보드에서 통합 슬랙으로 복귀", () => {
   assert.equal(returnAfterLogin(BASE + "/dashboard"), START)
-  assert.equal(returnAfterLogin(BASE + "/dashboard", true), BASE + "/talk")
+  assert.equal(returnAfterLogin(BASE + "/dashboard", true), START)
   assert.equal(returnAfterLogin(BASE + "/login"), null)
   assert.equal(returnAfterLogin(BASE + "/slack?c=room"), null)
+})
+
+test("기존 열톡 링크의 방·검색·스레드 정보를 통합 슬랙에 전달", () => {
+  assert.equal(returnAfterLogin(BASE + "/talk"), START)
+  assert.equal(returnAfterLogin(BASE + "/talk?c=room123&thread=msg1"), START + "?c=room123&m=msg1")
+  assert.equal(returnAfterLogin(BASE + "/talk/room123?c=other&thread=msg1#message"), START + "?c=room123&m=msg1#message")
+  assert.equal(returnAfterLogin(BASE + "/talk/../../ceo"), null)
+  assert.equal(returnAfterLogin("https://example.org/talk/room123"), null)
+})
+
+test("옛 thread를 슬랙의 메시지 m으로 변환하고 기존 m이 있으면 우선", () => {
+  assert.equal(returnAfterLogin(BASE + "/talk/room123?thread=msg1"), START + "?c=room123&m=msg1")
+  assert.equal(returnAfterLogin(BASE + "/talk/room123?c=other&thread=msg1&m=msg2"), START + "?c=room123&m=msg2")
+  assert.equal(returnAfterLogin(BASE + "/talk?c=room123&m=msg2"), START + "?c=room123&m=msg2")
+})
+
+test("옛 열톡 페이지 요청도 별도 창 없이 같은 방의 슬랙으로 이동", () => {
+  assert.deepEqual(requestDecision({ url: BASE + "/talk/room123", resourceType: "mainFrame" }), { redirectURL: START + "?c=room123" })
+  assert.deepEqual(requestDecision({ url: BASE + "/talk?c=room123", resourceType: "mainFrame" }), { redirectURL: START + "?c=room123" })
+  assert.deepEqual(requestDecision({ url: BASE + "/talk/room123?thread=msg1", resourceType: "mainFrame" }), { redirectURL: START + "?c=room123&m=msg1" })
+  assert.deepEqual(requestDecision({ url: BASE + "/talk/room123?c=other&thread=msg1&m=msg2", resourceType: "mainFrame" }), { redirectURL: START + "?c=room123&m=msg2" })
 })
 test("외부 링크를 앱 안에서 실행하지 않고 위험 스킴·주소 자격증명 차단", () => {
   assert.equal(classifyUrl(BASE + "/slack"), "internal")
