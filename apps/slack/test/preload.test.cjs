@@ -9,6 +9,7 @@ test("화면 생성 전에 공통 메뉴·자동 열톡 패널을 제거하는 �
         contextBridge: { exposeInMainWorld: (...args) => exposed.push(args) } }
     },
   })
+  assert.equal(exposed[0][1].version, require("../package.json").version)
   assert.equal(styles.length, 1)
   assert.match(styles[0], /\[data-chrome\][^{]*\{[^}]*display:\s*none\s*!important/)
   assert.match(styles[0], /main\[data-main\][^{]*\{[^}]*margin-left:\s*0\s*!important/)
