@@ -68,3 +68,15 @@ test("기존 근무시간과 동일한 한국시간 평일09~19시 알림", () =
   assert.equal(alertHours(new Date("2026-10-31T09:30:00+09:00")), false)
   assert.equal(alertHours(new Date("2026-11-02T19:00:00+09:00")), false)
 })
+
+
+test("업무 원본 프레임의 필터·저장 요청은 허용하고 상위 창·다른 경로는 기존 정책 유지", () => {
+  for (const p of ["/tasks?_rsc=fixture", "/tasks/test-task?_rsc=fixture", "/tasks?status=DONE"]) {
+    assert.deepEqual(requestDecision({url:BASE+p, resourceType:"xhr", requestHeaders:{RSC:"1"}}), {})
+  }
+  assert.deepEqual(requestDecision({url:BASE+"/tasks",resourceType:"mainFrame"}), {cancel:true})
+  for (const p of ["/tasks-other?_rsc=fixture", "/ceo?_rsc=fixture", "/finance/bank?_rsc=fixture"]) {
+    assert.deepEqual(requestDecision({url:BASE+p,resourceType:"xhr",requestHeaders:{RSC:"1"}}), {cancel:true})
+  }
+  assert.deepEqual(requestDecision({url:"https://example.org/tasks?_rsc=fixture",resourceType:"xhr"}), {cancel:true})
+})

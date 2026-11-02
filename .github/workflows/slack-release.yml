@@ -31,6 +31,6 @@ jobs:
         with:
           name: passion-slack-windows
           path: |
-            apps/slack/dist/passion-slack-setup-*.exe
+            apps/slack/dist/passion-slack-setup*.exe
             apps/slack/dist/latest.yml
             apps/slack/dist/*.blockmap

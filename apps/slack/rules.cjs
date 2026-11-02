@@ -23,6 +23,10 @@ function requestDecision(details) {
   const pageRequest = details.resourceType === "mainFrame" || url.searchParams.has("_rsc") ||
     Object.entries(details.requestHeaders || {}).some(([name, value]) => name.toLowerCase() === "rsc" && value === "1")
   if (!pageRequest) return {}
+  // 업무 원본은 슬랙의 하위 프레임에서만 연다. 필터·저장 뒤 Next RSC 요청도 같은 세션을 쓴다.
+  // 상위 창의 업무 링크는 계속 기본 브라우저로 열고 대표실·재무 등은 차단한다.
+  if (details.resourceType !== "mainFrame" && url.origin === BASE && !url.username && !url.password &&
+      (url.pathname === "/tasks" || url.pathname.startsWith("/tasks/"))) return {}
   if (details.resourceType === "mainFrame") {
     const target = returnAfterLogin(details.url)
     if (target) return { redirectURL: target }

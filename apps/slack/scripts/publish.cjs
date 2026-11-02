@@ -26,5 +26,9 @@ else {
 }
 // 실행파일/블록맵 먼저, 최신 안내 파일은 마지막에 바꿔 다운로드 중인 PC를 보호한다.
 gh(["release", "upload", tag, path.join(dist, installer), path.join(dist, installer + ".blockmap"), "--clobber"])
+// 설치 안내는 고정 주소를 쓴다. 버전별 원본을 보존하면서 새 설치도 항상 최신 파일을 받는다.
+const stableInstaller = path.join(dist, "passion-slack-setup.exe")
+fs.copyFileSync(path.join(dist, installer), stableInstaller)
+gh(["release", "upload", tag, stableInstaller, "--clobber"])
 gh(["release", "upload", tag, path.join(dist, "latest.yml"), "--clobber"])
 console.log(`공개 완료: 열정 슬랙 ${version}`)

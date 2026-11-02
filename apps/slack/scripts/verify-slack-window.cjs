@@ -59,10 +59,15 @@ app.whenReady().then(async () => {
     await win.loadURL(BASE + "/dashboard")
     assert.equal(win.webContents.getURL(), START)
     await check("로그인 완료 경로를 슬랙으로 복귀")
+    const taskRscAllowed = await win.webContents.executeJavaScript(`fetch('/tasks?status=DONE&_rsc=fixture',{headers:{RSC:'1'}}).then(r=>r.ok,()=>false)`)
+    assert.equal(taskRscAllowed, true)
+    const taskFrameLoaded = await win.webContents.executeJavaScript(`new Promise(resolve=>{const f=document.createElement('iframe');f.title='업무 원본 검증';f.onload=()=>resolve(f.contentDocument.body.textContent.includes('채팅 본문 영역'));f.onerror=()=>resolve(false);f.src='/tasks';document.body.append(f);setTimeout(()=>resolve(false),5000)})`)
+    assert.equal(taskFrameLoaded, true)
+    await assert.rejects(win.loadURL(BASE + "/tasks"))
     await assert.rejects(win.loadURL(BASE + "/ceo"))
     assert.deepEqual(errors, [])
     fs.writeFileSync(path.join(evidence, "slack-window.json"), JSON.stringify({ fixtureOnly: true, softwareRenderer: true, actualEmployeeLoginTested: false,
-      rows, nativePageBoundary: { forbiddenDocumentBlocked: true, forbiddenRscQueryBlocked: requests[0], forbiddenRscHeaderBlocked: requests[1], chatApiAllowed: requests[2] }, preloadErrors: errors }, null, 2))
+      rows, nativePageBoundary: { taskRscAllowed, taskFrameLoaded, taskTopFrameBlocked: true, forbiddenDocumentBlocked: true, forbiddenRscQueryBlocked: requests[0], forbiddenRscHeaderBlocked: requests[1], chatApiAllowed: requests[2] }, preloadErrors: errors }, null, 2))
   } finally { win.destroy(); await new Promise(resolve => server.close(resolve)) }
   app.quit()
 }).catch(error => { fs.writeFileSync(path.join(evidence, "slack-window-error.txt"), `${phase}\n${error.stack}`); app.exit(1) })
