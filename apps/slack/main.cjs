@@ -3,6 +3,7 @@ const path = require("node:path")
 const fs = require("node:fs")
 const { BASE, START, PARTITION, classifyUrl, returnAfterLogin, roomLink, unreadFor, roomTitle, notificationCandidates, alertHours, requestDecision } = require("./rules.cjs")
 const { connectUpdater } = require("./updater.cjs")
+const { connectNavigation } = require("./navigation.cjs")
 
 app.setName("슬랙")
 // 기존 열톡/웹브라우저와 분리된 PC별 프로필. 비밀번호를 따로 저장하지 않는다.
@@ -50,16 +51,7 @@ function makeWindow() {
   win.webContents.on("will-navigate", navigation)
   win.webContents.on("will-redirect", navigation)
   win.webContents.on("will-attach-webview", e => e.preventDefault())
-  const restoreHome = (_e, url) => {
-    const target = returnAfterLogin(url)
-    if (target) win.loadURL(target).catch(() => safeLog("login-return-failed"))
-    else if (classifyUrl(url) !== "internal" && !url.startsWith("file:")) {
-      openExternal(url)
-      show(win, START)
-    }
-  }
-  win.webContents.on("did-navigate", restoreHome)
-  win.webContents.on("did-navigate-in-page", restoreHome)
+  connectNavigation(win, { openExternal, show, safeLog })
   win.webContents.on("did-finish-load", poll)
   win.webContents.on("will-prevent-unload", event => {
     const answer = dialog.showMessageBoxSync(win, { type: "question", buttons: ["계속 작성", "이동"], defaultId: 0, cancelId: 0,
