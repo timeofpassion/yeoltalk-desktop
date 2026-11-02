@@ -2,6 +2,7 @@
 const { app, BrowserWindow } = require("electron")
 const fs = require("node:fs"), path = require("node:path"), http = require("node:http"), assert = require("node:assert/strict")
 const { BASE, START, requestDecision } = require("../rules.cjs")
+const { connectNavigation } = require("../navigation.cjs")
 // 화면 없는 시험 창의 캡처는 소프트웨어 렌더러로 고정한다(Windows GPU Viz 캡처 오류 방지).
 app.disableHardwareAcceleration()
 const evidence = process.argv[2]
@@ -63,11 +64,21 @@ app.whenReady().then(async () => {
     assert.equal(taskRscAllowed, true)
     const taskFrameLoaded = await win.webContents.executeJavaScript(`new Promise(resolve=>{const f=document.createElement('iframe');f.title='업무 원본 검증';f.onload=()=>resolve(f.contentDocument.body.textContent.includes('채팅 본문 영역'));f.onerror=()=>resolve(false);f.src='/tasks';document.body.append(f);setTimeout(()=>resolve(false),5000)})`)
     assert.equal(taskFrameLoaded, true)
+    const navigationActions = [], oldHandlerActions = []
+    connectNavigation(win, { openExternal: url => navigationActions.push(url), show: (_win, url) => navigationActions.push(url), safeLog() {} })
+    win.webContents.on("did-navigate-in-page", (_event, url) => {
+      if (url.startsWith(BASE + "/tasks")) oldHandlerActions.push(url)
+    })
+    await win.webContents.executeJavaScript(`document.querySelector('iframe').contentWindow.history.pushState({}, '', '/tasks?status=DONE')`)
+    await new Promise(resolve => setTimeout(resolve, 200))
+    assert.equal(oldHandlerActions.length, 1, "기존 처리기는 업무 하위 프레임 이동도 바깥 창으로 보냄")
+    assert.deepEqual(navigationActions, [])
+    assert.equal(win.webContents.getURL(), START)
     await assert.rejects(win.loadURL(BASE + "/tasks"))
     await assert.rejects(win.loadURL(BASE + "/ceo"))
     assert.deepEqual(errors, [])
     fs.writeFileSync(path.join(evidence, "slack-window.json"), JSON.stringify({ fixtureOnly: true, softwareRenderer: true, actualEmployeeLoginTested: false,
-      rows, nativePageBoundary: { taskRscAllowed, taskFrameLoaded, taskTopFrameBlocked: true, forbiddenDocumentBlocked: true, forbiddenRscQueryBlocked: requests[0], forbiddenRscHeaderBlocked: requests[1], chatApiAllowed: requests[2] }, preloadErrors: errors }, null, 2))
+      rows, taskFrameNavigation: { oldHandlerWouldOpenExternal: oldHandlerActions.length === 1, fixedHandlerActions: navigationActions, parentStayedInSlack: true }, nativePageBoundary: { taskRscAllowed, taskFrameLoaded, taskTopFrameBlocked: true, forbiddenDocumentBlocked: true, forbiddenRscQueryBlocked: requests[0], forbiddenRscHeaderBlocked: requests[1], chatApiAllowed: requests[2] }, preloadErrors: errors }, null, 2))
   } finally { win.destroy(); await new Promise(resolve => server.close(resolve)) }
   app.quit()
 }).catch(error => { fs.writeFileSync(path.join(evidence, "slack-window-error.txt"), `${phase}\n${error.stack}`); app.exit(1) })
