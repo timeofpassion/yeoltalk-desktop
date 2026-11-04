@@ -22,7 +22,7 @@ app.whenReady().then(() => {
 })
 const entry = path.resolve(__dirname, "../main.cjs"), runtime = new Module(entry, module)
 runtime.filename = entry; runtime.paths = Module._nodeModulePaths(path.dirname(entry))
-runtime._compile(fs.readFileSync(entry, "utf8") + "\nmodule.exports={poll:()=>{menuSignature='';return poll()},state:()=>({mainWindow,unreadRooms,workspace})};", entry)
+runtime._compile(fs.readFileSync(entry, "utf8") + "\nmodule.exports={poll:()=>{menuSignature='';return poll()},state:()=>({mainWindow,unreadRooms,workspace,polling,pollQueued})};", entry)
 const api = runtime.exports
 async function until(predicate) {
   const start = Date.now()
@@ -37,6 +37,7 @@ app.whenReady().then(async () => {
   const nativeOverlay = win.setOverlayIcon.bind(win)
   win.setOverlayIcon = (image, label) => { overlay.push({ empty: image ? image.isEmpty() : true, label }); nativeOverlay(image, label) }
   await api.poll()
+  await until(()=>!api.state().polling && !api.state().pollQueued && overlay.length > 0)
   const unreadMenu = () => Menu.getApplicationMenu().items[0].submenu.items.find(x => x.label.startsWith("안 읽은 대화"))
   await until(() => unreadMenu()?.submenu?.items[0]?.label.includes("시험 직원"))
   assert.match(unreadMenu().label, /4개 메시지/)
@@ -71,7 +72,8 @@ app.whenReady().then(async () => {
   await until(() => unread === 0 && api.state().unreadRooms.length === 0)
   assert.equal(unreadMenu().enabled, false)
   assert.equal(overlay.at(-1).empty, true)
-  auth = false; unread = 4; await api.poll()
+  unread = 4; await api.poll(); await until(()=>unreadMenu().enabled && !api.state().polling)
+  auth = false; await api.poll(); await until(()=>!unreadMenu().enabled && !api.state().polling)
   assert.equal(unreadMenu().enabled, false)
   const result = { fixtureOnly: true, actualEmployeeLogin: false, nativeWindowsOverlayImageLoaded: true, unread4ToRoom: true,
     oneSlackWindow: true, legacyTalkPopupOpensSameRoomInSlack: true, legacyMainFrameRedirectsToSlack: true,
