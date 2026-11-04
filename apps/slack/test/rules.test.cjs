@@ -1,10 +1,10 @@
 const test = require("node:test"), assert = require("node:assert/strict")
 const { BASE, START, PARTITION, classifyUrl, returnAfterLogin, roomLink, notificationCandidates, alertHours, requestDecision } = require("../rules.cjs")
 
-test("앱 안에서는 슬랙·열톡·로그인만 열고 문서 등은 본인 브라우저로 연다", () => {
+test("슬랙·업무·전자결재는 앱에서 열고 기타 문서는 기존 경계를 유지", () => {
   for (const p of ["/slack?c=mine", "/talk", "/talk/room123", "/login", "/api/auth/callback/credentials"]) assert.equal(classifyUrl(BASE + p), "internal")
   for (const p of ["/ceo", "/best3", "/control", "/settings", "/payroll", "/finance/bank", "/slack-other"]) assert.equal(classifyUrl(BASE + p), "blocked")
-  for (const p of ["/clients/1", "/approvals/my-doc", "/tasks/my-task", "/docs/my-doc"]) assert.equal(classifyUrl(BASE + p), "external")
+  for (const p of ["/clients/1", "/docs/my-doc"]) assert.equal(classifyUrl(BASE + p), "external")
 })
 
 test("페이지 이동과 SPA 서버 렌더링도 창 경계를 지키되 채팅 API·파일은 유지", () => {
@@ -70,13 +70,18 @@ test("기존 근무시간과 동일한 한국시간 평일09~19시 알림", () =
 })
 
 
-test("업무 원본 프레임의 필터·저장 요청은 허용하고 상위 창·다른 경로는 기존 정책 유지", () => {
+test("업무 원본의 필터·저장·상위 화면은 허용하고 다른 경로는 기존 정책 유지", () => {
   for (const p of ["/tasks?_rsc=fixture", "/tasks/test-task?_rsc=fixture", "/tasks?status=DONE"]) {
     assert.deepEqual(requestDecision({url:BASE+p, resourceType:"xhr", requestHeaders:{RSC:"1"}}), {})
   }
-  assert.deepEqual(requestDecision({url:BASE+"/tasks",resourceType:"mainFrame"}), {cancel:true})
+  assert.deepEqual(requestDecision({url:BASE+"/tasks",resourceType:"mainFrame"}), {})
   for (const p of ["/tasks-other?_rsc=fixture", "/ceo?_rsc=fixture", "/finance/bank?_rsc=fixture"]) {
     assert.deepEqual(requestDecision({url:BASE+p,resourceType:"xhr",requestHeaders:{RSC:"1"}}), {cancel:true})
   }
   assert.deepEqual(requestDecision({url:"https://example.org/tasks?_rsc=fixture",resourceType:"xhr"}), {cancel:true})
 })
+
+test("업무·전자결재만 내부 화면으로 확장하고 유사 경로는 차단",()=>{
+ for(const p of ["/tasks","/tasks/item","/approvals","/approvals/doc"])assert.equal(classifyUrl(BASE+p),"internal");
+ for(const p of ["/approvals-other","/tasks-other"])assert.equal(classifyUrl(BASE+p),"blocked");
+});

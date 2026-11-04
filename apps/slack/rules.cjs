@@ -1,6 +1,16 @@
 const BASE = "https://intranet.timeofpassion.com"
 const START = `${BASE}/slack`
 const PARTITION = "persist:passion-slack"
+function workspaceKey(value) {
+  try {
+    const url = new URL(value)
+    if (url.origin === BASE && !url.username && !url.password) {
+      if (/^\/approvals(\/|$)/.test(url.pathname)) return "approvals"
+      if (/^\/tasks(\/|$)/.test(url.pathname)) return "tasks"
+    }
+  } catch {}
+  return "chat"
+}
 function classifyUrl(value) {
   try {
     const url = new URL(value)
@@ -10,7 +20,8 @@ function classifyUrl(value) {
         return /^\/api\/chat\/files\/v1\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9][A-Za-z0-9._-]{0,220}$/.test(url.pathname) && [...url.searchParams.keys()].every(k => k === "download") && url.searchParams.getAll("download").length <= 1 ? "attachment" : "blocked"
       }
       if (["/", "/dashboard", "/slack", "/talk"].includes(url.pathname) || /^\/talk\/[a-z0-9_-]{1,100}$/i.test(url.pathname) || isLoginPath(url.pathname)) return "internal"
-      const documents = ["/approvals", "/tasks", "/docs", "/clients", "/sign", "/s", "/finance/expenses", "/api/chat/files", "/api/files", "/api/attachments", "/uploads"]
+      if (workspaceKey(value) !== "chat") return "internal"
+      const documents = ["/docs", "/clients", "/sign", "/s", "/finance/expenses", "/api/chat/files", "/api/files", "/api/attachments", "/uploads"]
       return documents.some(p => url.pathname === p || url.pathname.startsWith(p + "/")) ? "external" : "blocked"
     }
     return ["https:", "http:", "mailto:"].includes(url.protocol) ? "external" : "blocked"
@@ -23,8 +34,7 @@ function requestDecision(details) {
   const pageRequest = details.resourceType === "mainFrame" || url.searchParams.has("_rsc") ||
     Object.entries(details.requestHeaders || {}).some(([name, value]) => name.toLowerCase() === "rsc" && value === "1")
   if (!pageRequest) return {}
-  // 업무 원본은 슬랙의 하위 프레임에서만 연다. 필터·저장 뒤 Next RSC 요청도 같은 세션을 쓴다.
-  // 상위 창의 업무 링크는 계속 기본 브라우저로 열고 대표실·재무 등은 차단한다.
+  // 원본 업무·결재는 앱 탭에서 같은 로그인 세션을 쓴다. 대표실·재무 등 기존 차단 경로는 유지한다.
   if (details.resourceType !== "mainFrame" && url.origin === BASE && !url.username && !url.password &&
       (url.pathname === "/tasks" || url.pathname.startsWith("/tasks/"))) return {}
   if (details.resourceType === "mainFrame") {
@@ -82,4 +92,4 @@ function alertHours(now = new Date()) {
   const day = k.getUTCDay(), minute = k.getUTCHours() * 60 + k.getUTCMinutes()
   return day > 0 && day < 6 && minute >= 540 && minute < 1140
 }
-module.exports = { BASE, START, PARTITION, classifyUrl, isLoginPath, returnAfterLogin, roomLink, unreadFor, roomTitle, notificationCandidates, alertHours, requestDecision }
+module.exports = { BASE, START, PARTITION, classifyUrl, isLoginPath, returnAfterLogin, roomLink, unreadFor, roomTitle, notificationCandidates, alertHours, requestDecision, workspaceKey }

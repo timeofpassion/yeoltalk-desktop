@@ -11,7 +11,7 @@ test("업무 하위 프레임의 필터·상세·해시 이동은 외부 창과 
   }
   assert.deepEqual(calls, [])
   win.webContents.emit("did-navigate-in-page", {}, BASE + "/tasks", true)
-  assert.deepEqual(calls, [BASE + "/tasks", START])
+  assert.deepEqual(calls, [])
   calls.length = 0
   win.webContents.emit("did-navigate", {}, BASE + "/dashboard")
   assert.deepEqual(calls, [START])

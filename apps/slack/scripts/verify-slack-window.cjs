@@ -74,11 +74,12 @@ app.whenReady().then(async () => {
     assert.equal(oldHandlerActions.length, 1, "기존 처리기는 업무 하위 프레임 이동도 바깥 창으로 보냄")
     assert.deepEqual(navigationActions, [])
     assert.equal(win.webContents.getURL(), START)
-    await assert.rejects(win.loadURL(BASE + "/tasks"))
+    await win.loadURL(BASE + "/tasks")
+    assert.equal(win.webContents.getURL(), BASE + "/tasks")
     await assert.rejects(win.loadURL(BASE + "/ceo"))
     assert.deepEqual(errors, [])
     fs.writeFileSync(path.join(evidence, "slack-window.json"), JSON.stringify({ fixtureOnly: true, softwareRenderer: true, actualEmployeeLoginTested: false,
-      rows, taskFrameNavigation: { oldHandlerWouldOpenExternal: oldHandlerActions.length === 1, fixedHandlerActions: navigationActions, parentStayedInSlack: true }, nativePageBoundary: { taskRscAllowed, taskFrameLoaded, taskTopFrameBlocked: true, forbiddenDocumentBlocked: true, forbiddenRscQueryBlocked: requests[0], forbiddenRscHeaderBlocked: requests[1], chatApiAllowed: requests[2] }, preloadErrors: errors }, null, 2))
+      rows, taskFrameNavigation: { oldHandlerWouldOpenExternal: oldHandlerActions.length === 1, fixedHandlerActions: navigationActions, parentStayedInSlack: true }, nativePageBoundary: { taskRscAllowed, taskFrameLoaded, taskTopFrameAllowed: true, forbiddenDocumentBlocked: true, forbiddenRscQueryBlocked: requests[0], forbiddenRscHeaderBlocked: requests[1], chatApiAllowed: requests[2] }, preloadErrors: errors }, null, 2))
   } finally { win.destroy(); await new Promise(resolve => server.close(resolve)) }
   app.quit()
 }).catch(error => { fs.writeFileSync(path.join(evidence, "slack-window-error.txt"), `${phase}\n${error.stack}`); app.exit(1) })
