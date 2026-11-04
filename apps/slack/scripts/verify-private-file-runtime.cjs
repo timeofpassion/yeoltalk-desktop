@@ -1,5 +1,5 @@
 // 운영 계정·실제 파일 없이 Electron의 쿠키·새창·다운로드 경로를 검증한다.
-const { app, session, BrowserWindow } = require("electron")
+const { app, session, BaseWindow } = require("electron")
 const fs = require("node:fs"), path = require("node:path"), Module = require("node:module"), assert = require("node:assert/strict")
 const http = require("node:http")
 const { BASE, PARTITION } = require("../rules.cjs")
@@ -45,21 +45,22 @@ app.whenReady().then(async () => {
   })
   const entry = path.resolve(__dirname, "../main.cjs"), runtime = new Module(entry, module)
   runtime.filename = entry; runtime.paths = Module._nodeModulePaths(path.dirname(entry))
-  runtime._compile(fs.readFileSync(entry, "utf8") + "\nmodule.exports={getWindow:()=>mainWindow};", entry)
+  runtime._compile(fs.readFileSync(entry, "utf8") + "\nmodule.exports={getWindow:()=>mainWindow,getContents:()=>workspace?.contents()};", entry)
   let win
   for (let i = 0; i < 400; i++) {
     win = runtime.exports.getWindow()
-    if (win && !win.webContents.isLoading()) break
+    if (win && runtime.exports.getContents() && !runtime.exports.getContents().isLoading()) break
     await new Promise(resolve => setTimeout(resolve, 25))
   }
   assert.ok(win); win.hide()
-  const originalUrl = win.webContents.getURL()
-  await win.webContents.executeJavaScript("document.getElementById('file').click()")
+  const wc=runtime.exports.getContents()
+  const originalUrl = wc.getURL()
+  await wc.executeJavaScript("document.getElementById('file').click()")
   await downloaded
   assert.equal(cookieUsed, true)
   assert.equal(fs.readFileSync(saved, "utf8"), "private-fixture")
-  assert.equal(win.webContents.getURL(), originalUrl)
-  assert.equal(BrowserWindow.getAllWindows().length, 1)
+  assert.equal(wc.getURL(), originalUrl)
+  assert.equal(BaseWindow.getAllWindows().length, 1)
   assert.equal((await session.defaultSession.cookies.get({ name: "fixture-auth" })).length, 0)
   fs.writeFileSync(path.join(evidence, "result.json"), JSON.stringify({ fixtureOnly: true, realEmployeeLogin: false,
     fixtureApiProxiedViaSameSessionLocalHttp: true, authenticatedCookieUsed: true, defaultBrowserProfileNotUsed: true, sameSlackWindowPreserved: true, exactFixtureFileDownloaded: true }, null, 2))

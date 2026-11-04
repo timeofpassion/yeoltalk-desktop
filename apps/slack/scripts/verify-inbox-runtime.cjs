@@ -1,5 +1,5 @@
 // 실제 Electron 메인·메뉴·요청 훅·통합 창을 격리 데이터로 검사. 운영 쿠키/직원 계정 미사용.
-const { app, session, Menu, BrowserWindow } = require("electron")
+const { app, session, Menu, BaseWindow } = require("electron")
 const fs = require("node:fs"), path = require("node:path"), Module = require("node:module"), assert = require("node:assert/strict")
 const { BASE, PARTITION } = require("../rules.cjs")
 const evidence = process.argv[2]
@@ -22,7 +22,7 @@ app.whenReady().then(() => {
 })
 const entry = path.resolve(__dirname, "../main.cjs"), runtime = new Module(entry, module)
 runtime.filename = entry; runtime.paths = Module._nodeModulePaths(path.dirname(entry))
-runtime._compile(fs.readFileSync(entry, "utf8") + "\nmodule.exports={poll,state:()=>({mainWindow,unreadRooms})};", entry)
+runtime._compile(fs.readFileSync(entry, "utf8") + "\nmodule.exports={poll:()=>{menuSignature='';return poll()},state:()=>({mainWindow,unreadRooms,workspace})};", entry)
 const api = runtime.exports
 async function until(predicate) {
   const start = Date.now()
@@ -32,8 +32,8 @@ async function until(predicate) {
   }
 }
 app.whenReady().then(async () => {
-  await until(() => api.state().mainWindow && !api.state().mainWindow.webContents.isLoading())
-  const win = api.state().mainWindow, overlay = []
+  await until(() => api.state().workspace?.contents() && !api.state().workspace.contents().isLoading())
+  const win = api.state().mainWindow, wc = () => api.state().workspace.contents(), overlay = []
   const nativeOverlay = win.setOverlayIcon.bind(win)
   win.setOverlayIcon = (image, label) => { overlay.push({ empty: image ? image.isEmpty() : true, label }); nativeOverlay(image, label) }
   await api.poll()
@@ -43,31 +43,31 @@ app.whenReady().then(async () => {
   assert.match(unreadMenu().submenu.items[0].label, /시험 직원.*4/)
   assert.equal(overlay.at(-1).empty, false)
   unreadMenu().submenu.items[0].click()
-  await until(() => !win.webContents.isLoading() && win.webContents.getURL().includes("c=fixture-room"))
-  assert.equal(win.webContents.getURL(), BASE + "/slack?c=fixture-room")
-  await win.webContents.executeJavaScript("document.getElementById('talk').click()")
-  await until(() => !win.webContents.isLoading() && win.webContents.getURL().includes("c=fixture-legacy"))
-  assert.equal(win.webContents.getURL(), BASE + "/slack?c=fixture-legacy&m=msg1")
-  assert.equal(await win.webContents.executeJavaScript("document.getElementById('message').textContent"), "msg1")
-  assert.equal(BrowserWindow.getAllWindows().length, 1)
-  assert.equal(win.getTitle(), "슬랙")
+  await until(() => !wc().isLoading() && wc().getURL().includes("c=fixture-room"))
+  assert.equal(wc().getURL(), BASE + "/slack?c=fixture-room")
+  await wc().executeJavaScript("document.getElementById('talk').click()")
+  await until(() => !wc().isLoading() && wc().getURL().includes("c=fixture-legacy"))
+  assert.equal(wc().getURL(), BASE + "/slack?c=fixture-legacy&m=msg1")
+  assert.equal(await wc().executeJavaScript("document.getElementById('message').textContent"), "msg1")
+  assert.equal(BaseWindow.getAllWindows().length, 1)
+  assert.equal(win.getTitle(), "열정 인트라넷")
   assert.equal(Menu.getApplicationMenu().items[0].submenu.items.some(x => x.label === "열톡 열기"), false)
-  await win.loadURL(BASE + "/talk/fixture-room?thread=msg2")
-  assert.equal(win.webContents.getURL(), BASE + "/slack?c=fixture-room&m=msg2")
-  assert.equal(await win.webContents.executeJavaScript("document.getElementById('message').textContent"), "msg2")
-  await win.loadURL(BASE + "/talk/fixture-room?c=other&thread=msg2&m=msg3")
-  assert.equal(win.webContents.getURL(), BASE + "/slack?c=fixture-room&m=msg3")
-  assert.equal(await win.webContents.executeJavaScript("document.getElementById('message').textContent"), "msg3")
+  api.state().workspace.openUrl(BASE + "/talk/fixture-room?thread=msg2"); await until(()=>!wc().isLoading() && wc().getURL().includes("m=msg2"))
+  assert.equal(wc().getURL(), BASE + "/slack?c=fixture-room&m=msg2")
+  assert.equal(await wc().executeJavaScript("document.getElementById('message').textContent"), "msg2")
+  api.state().workspace.openUrl(BASE + "/talk/fixture-room?c=other&thread=msg2&m=msg3"); await until(()=>!wc().isLoading() && wc().getURL().includes("m=msg3"))
+  assert.equal(wc().getURL(), BASE + "/slack?c=fixture-room&m=msg3")
+  assert.equal(await wc().executeJavaScript("document.getElementById('message').textContent"), "msg3")
   let screenshot = { captured: false }
   try {
-    fs.writeFileSync(path.join(evidence, "slack-fixture.png"), (await win.webContents.capturePage()).toPNG())
+    fs.writeFileSync(path.join(evidence, "slack-fixture.png"), (await wc().capturePage()).toPNG())
     screenshot.captured = true
   } catch (error) {
     // 일부 Windows 비대화형 세션에서는 Viz 캡처만 실패한다. 동작 검증과 구분해 기록한다.
-    if (error.message !== "UnknownVizError") throw error
+    if (!["UnknownVizError", "Current display surface not available for capture"].includes(error.message)) throw error
     screenshot.error = error.message
   }
-  await win.webContents.executeJavaScript("document.getElementById('read').click()")
+  await wc().executeJavaScript("document.getElementById('read').click()")
   await until(() => unread === 0 && api.state().unreadRooms.length === 0)
   assert.equal(unreadMenu().enabled, false)
   assert.equal(overlay.at(-1).empty, true)

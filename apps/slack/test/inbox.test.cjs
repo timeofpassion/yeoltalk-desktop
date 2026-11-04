@@ -2,12 +2,12 @@ const test = require("node:test"), assert = require("node:assert/strict")
 const vm = require("node:vm"), fs = require("node:fs"), path = require("node:path")
 
 function harness() {
-  let rows = [], ok = true, contextMenu
+  let rows = [], ok = true, status = 200, contextMenu
   const badge = [], overlays = [], urls = [], notices = [], fetches = []
   const names = { employees: [{ id: "peer", name: "시험 직원" }] }
   const win = { isDestroyed: () => false, isFocused: () => false, isMinimized: () => false, show() {}, focus() {}, flashFrame() {},
     loadURL: async url => { urls.push(url) }, setOverlayIcon: (image, label) => overlays.push({ image, label }),
-    webContents: { session: { fetch: async url => { fetches.push(url); return { ok, headers: { get: () => "application/json" }, json: async () => url.includes("bootstrap") ? names : rows } } } } }
+    webContents: { session: { fetch: async url => { fetches.push(url); return { ok, status, headers: { get: () => "application/json" }, json: async () => url.includes("bootstrap") ? names : rows } } } } }
   const tray = { setToolTip() {}, setContextMenu: menu => { contextMenu = menu }, setImage() {} }
   class Notification { static isSupported() { return true }; constructor(value) { notices.push(value) }; on() {}; show() {} }
   const electron = { app: { setName() {}, setPath() {}, getPath: () => "fixture", setAppUserModelId() {}, requestSingleInstanceLock: () => false, quit() {},
@@ -15,10 +15,10 @@ function harness() {
     Menu: { buildFromTemplate: rows => rows, setApplicationMenu() {} },
     nativeImage: { createFromPath: filename => ({ filename, resize() { return this } }) } }
   const root = path.resolve(__dirname, ".."), sandbox = { fixture: { win, tray }, __dirname: root, console, Map, Date, AbortSignal,
-    require: id => id === "electron" ? electron : id === "./rules.cjs" ? { ...require("../rules.cjs"), alertHours: () => true } : id === "./updater.cjs" ? {} : id === "./navigation.cjs" ? require("../navigation.cjs") : require(id) }
+    require: id => id === "electron" ? electron : id === "./rules.cjs" ? { ...require("../rules.cjs"), alertHours: () => true } : id === "./updater.cjs" ? {} : id === "./workspace.cjs" ? require("../workspace.cjs") : require(id) }
   vm.runInNewContext(fs.readFileSync(path.join(root, "main.cjs"), "utf8") +
     "\nmainWindow=fixture.win;tray=fixture.tray;this.api={poll,refreshMenus};", sandbox)
-  return { ...sandbox.api, badge, overlays, urls, notices, fetches, setRows: value => { rows = value }, fail: () => { ok = false }, menu: () => contextMenu }
+  return { ...sandbox.api, badge, overlays, urls, notices, fetches, setRows: value => { rows = value }, fail: (code = 401) => { ok = false; status = code }, menu: () => contextMenu }
 }
 const room = overrides => ({ id: "room", kind: "dm", name: "me:peer", otherId: "peer", unread: 2, slackUnread: 2, mentioned: 0, lastAt: "2026-10-30T08:00:00Z", hidden: false, muted: false, ...overrides })
 
@@ -56,3 +56,13 @@ test("직원 목록에 없는 옛 상대 때문에 매15초 전체 프로필을 
   assert.equal(h.fetches.filter(url => url.includes("bootstrap")).length, 1)
   assert.equal(h.badge.at(-1), 4)
 })
+
+
+test("동일한 받은함이면 배지·메뉴를 재생성하지 않는다", async () => {
+  const h=harness(); h.setRows([room()]); await h.poll(); const n=h.overlays.length;
+  await h.poll(); await h.poll(); assert.equal(h.overlays.length,n);
+});
+test("서버 일시 오류는 읽음 0으로 위장하지 않고 기존 배지를 유지한다", async () => {
+  const h=harness(); h.setRows([room()]); await h.poll(); h.fail(503); await h.poll();
+  assert.equal(h.badge.at(-1),4);
+});
