@@ -74,12 +74,8 @@ function createWindow() {
   })
   win.on("focus", () => win.flashFrame(false))
   win.on("page-title-updated", (e) => e.preventDefault()) // 창 제목은 늘 「열톡」
-  // 로그인하면 인트라넷은 대시보드로 보낸다 → 이 프로그램에서는 열톡으로 되돌린다
-  win.webContents.on("did-navigate", (_e, url) => {
-    const u = new URL(url)
-    const keep = ["/talk", "/login", "/change-password", "/api/auth", "/auth-error"].some((p) => u.pathname.startsWith(p))
-    if (u.origin === BASE && !keep) win.loadURL(START)
-  })
+  // [2026-11-09 대표 지시] 「/talk 밖으로 나가면 /talk 다시 불러오기」 규칙 삭제 — 서버 이동과 맞물려 탭이 수백 개 열렸다(11/8).
+  //   열톡 1.x 는 은퇴했다. 서버가 이 프로그램에는 새 슬랙 PC 프로그램 설치 안내만 보여 준다. 다시 빌드해 배포하지 않는다.
 }
 
 function trayMenu() {

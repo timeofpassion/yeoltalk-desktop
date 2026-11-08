@@ -80,3 +80,17 @@ test("업무 원본 프레임의 필터·저장 요청은 허용하고 상위 �
   }
   assert.deepEqual(requestDecision({url:"https://example.org/tasks?_rsc=fixture",resourceType:"xhr"}), {cancel:true})
 })
+
+test("화면 안 이동(RSC)으로 로그인 완료·옛 열톡 주소에 가면 취소해 문서 요청에서 한 번만 슬랙으로 바꾼다", () => {
+  for (const p of ["/?_rsc=a", "/dashboard?_rsc=a", "/talk?_rsc=a", "/talk/room1?_rsc=a"]) {
+    assert.deepEqual(requestDecision({ url: BASE + p, resourceType: "xhr", requestHeaders: { RSC: "1" } }), { cancel: true })
+  }
+  assert.deepEqual(requestDecision({ url: BASE + "/dashboard", resourceType: "mainFrame" }), { redirectURL: START })
+  assert.deepEqual(requestDecision({ url: BASE + "/slack?_rsc=a", resourceType: "xhr", requestHeaders: { RSC: "1" } }), {})
+})
+test("업무 화면 안 이동은 하위 프레임만 허용하고 슬랙 창 자체가 보내면 취소한다", () => {
+  const rsc = { url: BASE + "/tasks?status=DONE&_rsc=a", resourceType: "xhr", requestHeaders: { RSC: "1" } }
+  assert.deepEqual(requestDecision({ ...rsc, frame: { parent: {} } }), {})
+  assert.deepEqual(requestDecision({ ...rsc, frame: { parent: null } }), { cancel: true })
+  assert.deepEqual(requestDecision({ ...rsc, frame: { get parent() { throw new Error("닫힌 프레임") } } }), {})
+})

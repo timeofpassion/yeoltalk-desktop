@@ -92,11 +92,10 @@ test("iframe의 SPA·서버 리다이렉트·상위 이동 시도가 브라우�
   f.contents.emit("will-redirect", { isMainFrame: true, url: `${BASE}/tasks`, preventDefault() {} })
   assert.deepEqual(f.calls.external, [`${BASE}/tasks`])
 })
-test("main의 새창·탐색 복귀·새로고침 모두 같은 출처 차단기를 거침", async () => {
+test("main의 새창·새로고침 모두 같은 출처 차단기를 거침", async () => {
   const f = await fixture()
   for (let i = 0; i < 30; i++) {
     f.popup({ url: `${BASE}/tasks/${i}` })
-    f.contents.emit("did-navigate-in-page", {}, `${BASE}/tasks?index=${i}`, true)
   }
   assert.equal(f.calls.external.length, 5)
   assert.ok(f.calls.load.length <= 10)
@@ -105,11 +104,20 @@ test("main의 새창·탐색 복귀·새로고침 모두 같은 출처 차단기
   f.popup({ url: `${BASE}/slack` }); assert.equal(f.calls.load.length, loads)
   assert.ok(f.calls.logs.some(log => log.includes("navigation-circuit-open")))
 })
-test("로그인 복귀 loadURL과 메뉴 reload가 하나의 10회 한도를 공유", async () => {
+test("이동이 끝난 뒤에는 어떤 주소로 가도 다시 열거나 브라우저를 열지 않는다(0.1.8 · 11/8 무한 반복 재발 방지)", async () => {
   const f = await fixture()
-  f.contents.emit("did-navigate", {}, BASE + "/dashboard")
+  for (const p of ["/dashboard", "/", "/talk", "/talk/room1", "/tasks", "/ceo", "/login"]) {
+    f.contents.emit("did-navigate", {}, BASE + p)
+    f.contents.emit("did-navigate-in-page", {}, BASE + p, true)
+    f.contents.emit("did-navigate-in-page", {}, BASE + p, false)
+  }
+  f.contents.emit("did-navigate", {}, "https://example.org/")
+  assert.deepEqual(f.calls.load, [START]); assert.deepEqual(f.calls.external, []); assert.equal(f.calls.reload, 0)
+})
+test("첫 화면 loadURL과 메뉴 reload가 하나의 10회 한도를 공유", async () => {
+  const f = await fixture()
   for (let i = 0; i < 20; i++) f.reload()
-  assert.deepEqual(f.calls.load, [START, START]); assert.equal(f.calls.reload, 8)
+  assert.deepEqual(f.calls.load, [START]); assert.equal(f.calls.reload, 9)
   assert.ok(f.calls.logs.some(log => log.includes("navigation-circuit-open load")))
 })
 test("자동 적용 시 창 닫기·작성 중 확인 대화상자가 종료를 막지 않음", async () => {
