@@ -23,16 +23,25 @@ function requestDecision(details) {
   const pageRequest = details.resourceType === "mainFrame" || url.searchParams.has("_rsc") ||
     Object.entries(details.requestHeaders || {}).some(([name, value]) => name.toLowerCase() === "rsc" && value === "1")
   if (!pageRequest) return {}
-  // 업무 원본은 슬랙의 하위 프레임에서만 연다. 필터·저장 뒤 Next RSC 요청도 같은 세션을 쓴다.
-  // 상위 창의 업무 링크는 계속 기본 브라우저로 열고 대표실·재무 등은 차단한다.
-  if (details.resourceType !== "mainFrame" && url.origin === BASE && !url.username && !url.password &&
-      (url.pathname === "/tasks" || url.pathname.startsWith("/tasks/"))) return {}
+  // [0.1.8 · 2026-11-09 대표 지시] 이동이 끝난 뒤 다시 여는 규칙은 없다. 판단은 이동 전에 여기서 한 번만 한다.
+  //   화면 안 이동(RSC)을 취소하면 Next 가 주소창 이동으로 바꾸고, 그건 will-navigate 가 막거나 아래 문서 요청에서 한 번 바꾼다.
   if (details.resourceType === "mainFrame") {
     const target = returnAfterLogin(details.url)
     if (target) return { redirectURL: target }
     if (classifyUrl(details.url) === "attachment") return {}
+    return classifyUrl(details.url) === "internal" ? {} : { cancel: true }
   }
+  // 로그인 완료(/·/dashboard)·옛 열톡 주소로 가는 화면 안 이동 → 취소해 위 문서 요청에서 슬랙으로 한 번만 바꾼다.
+  if (returnAfterLogin(details.url)) return { cancel: true }
+  // 업무 원본은 슬랙의 하위 프레임에서만 연다. 필터·저장 뒤 Next RSC 요청도 같은 세션을 쓴다.
+  // 상위 창이 업무로 화면 안 이동을 하면 취소 → 주소창 이동 → will-navigate 가 기본 브라우저로 연다. 대표실·재무 등은 차단한다.
+  if (url.origin === BASE && !url.username && !url.password && !fromTopFrame(details) &&
+      (url.pathname === "/tasks" || url.pathname.startsWith("/tasks/"))) return {}
   return classifyUrl(details.url) === "internal" ? {} : { cancel: true }
+}
+// 요청한 프레임이 슬랙 창 자체인지. 프레임 정보가 없거나 이미 닫혔으면 하위 프레임으로 본다(기존 동작).
+function fromTopFrame(details) {
+  try { return !!details.frame && details.frame.parent === null } catch { return false }
 }
 function isLoginPath(pathname) {
   return ["/login", "/change-password", "/auth-error", "/api/auth"].some(p => pathname === p || pathname.startsWith(p + "/"))

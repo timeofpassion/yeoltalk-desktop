@@ -2,7 +2,6 @@
 const { app, BrowserWindow } = require("electron")
 const fs = require("node:fs"), path = require("node:path"), http = require("node:http"), assert = require("node:assert/strict")
 const { BASE, START, requestDecision } = require("../rules.cjs")
-const { connectNavigation } = require("../navigation.cjs")
 // 화면 없는 시험 창의 캡처는 소프트웨어 렌더러로 고정한다(Windows GPU Viz 캡처 오류 방지).
 app.disableHardwareAcceleration()
 const evidence = process.argv[2]
@@ -60,25 +59,28 @@ app.whenReady().then(async () => {
     await win.loadURL(BASE + "/dashboard")
     assert.equal(win.webContents.getURL(), START)
     await check("로그인 완료 경로를 슬랙으로 복귀")
-    const taskRscAllowed = await win.webContents.executeJavaScript(`fetch('/tasks?status=DONE&_rsc=fixture',{headers:{RSC:'1'}}).then(r=>r.ok,()=>false)`)
-    assert.equal(taskRscAllowed, true)
     const taskFrameLoaded = await win.webContents.executeJavaScript(`new Promise(resolve=>{const f=document.createElement('iframe');f.title='업무 원본 검증';f.onload=()=>resolve(f.contentDocument.body.textContent.includes('채팅 본문 영역'));f.onerror=()=>resolve(false);f.src='/tasks';document.body.append(f);setTimeout(()=>resolve(false),5000)})`)
     assert.equal(taskFrameLoaded, true)
-    const navigationActions = [], oldHandlerActions = []
-    connectNavigation(win, { openExternal: url => navigationActions.push(url), show: (_win, url) => navigationActions.push(url), loadURL: (_win, url) => navigationActions.push(url) })
-    win.webContents.on("did-navigate-in-page", (_event, url) => {
-      if (url.startsWith(BASE + "/tasks")) oldHandlerActions.push(url)
-    })
+    // 0.1.8: 업무 화면 안 이동은 하위 프레임에서만 통과, 슬랙 창 자체가 보내면 실제 Electron 프레임 정보로 취소된다.
+    const taskRscAllowed = await win.webContents.executeJavaScript(`document.querySelector('iframe').contentWindow.fetch('/tasks?status=DONE&_rsc=fixture',{headers:{RSC:'1'}}).then(r=>r.ok,()=>false)`)
+    assert.equal(taskRscAllowed, true)
+    const topTaskRscBlocked = await win.webContents.executeJavaScript(`fetch('/tasks?status=DONE&_rsc=fixture',{headers:{RSC:'1'}}).then(()=>false,()=>true)`)
+    assert.equal(topTaskRscBlocked, true)
+    const dashboardRscBlocked = await win.webContents.executeJavaScript(`fetch('/dashboard?_rsc=fixture',{headers:{RSC:'1'}}).then(()=>false,()=>true)`)
+    assert.equal(dashboardRscBlocked, true)
+    // 이동이 끝난 뒤 다시 여는 처리기가 없으므로 하위 프레임 이동·상위 SPA 이동 어느 쪽도 창을 다시 불러오지 않는다.
+    let reloads = 0
+    win.webContents.on("did-start-navigation", (_event, _url, isInPlace, isMainFrame) => { if (isMainFrame && !isInPlace) reloads++ })
     await win.webContents.executeJavaScript(`document.querySelector('iframe').contentWindow.history.pushState({}, '', '/tasks?status=DONE')`)
-    await new Promise(resolve => setTimeout(resolve, 200))
-    assert.equal(oldHandlerActions.length, 1, "기존 처리기는 업무 하위 프레임 이동도 바깥 창으로 보냄")
-    assert.deepEqual(navigationActions, [])
+    await win.webContents.executeJavaScript(`history.pushState({}, '', '/dashboard'); history.pushState({}, '', '/slack')`)
+    await new Promise(resolve => setTimeout(resolve, 300))
+    assert.equal(reloads, 0)
     assert.equal(win.webContents.getURL(), START)
     await assert.rejects(win.loadURL(BASE + "/tasks"))
     await assert.rejects(win.loadURL(BASE + "/ceo"))
     assert.deepEqual(errors, [])
     fs.writeFileSync(path.join(evidence, "slack-window.json"), JSON.stringify({ fixtureOnly: true, softwareRenderer: true, actualEmployeeLoginTested: false,
-      rows, taskFrameNavigation: { oldHandlerWouldOpenExternal: oldHandlerActions.length === 1, fixedHandlerActions: navigationActions, parentStayedInSlack: true }, nativePageBoundary: { taskRscAllowed, taskFrameLoaded, taskTopFrameBlocked: true, forbiddenDocumentBlocked: true, forbiddenRscQueryBlocked: requests[0], forbiddenRscHeaderBlocked: requests[1], chatApiAllowed: requests[2] }, preloadErrors: errors }, null, 2))
+      rows, noReopenAfterNavigation: { reloads: 0, parentStayedInSlack: true }, nativePageBoundary: { taskRscAllowed, topTaskRscBlocked, dashboardRscBlocked, taskFrameLoaded, taskTopFrameBlocked: true, forbiddenDocumentBlocked: true, forbiddenRscQueryBlocked: requests[0], forbiddenRscHeaderBlocked: requests[1], chatApiAllowed: requests[2] }, preloadErrors: errors }, null, 2))
   } finally { win.destroy(); await new Promise(resolve => server.close(resolve)) }
   app.quit()
 }).catch(error => { fs.writeFileSync(path.join(evidence, "slack-window-error.txt"), `${phase}\n${error.stack}`); app.exit(1) })

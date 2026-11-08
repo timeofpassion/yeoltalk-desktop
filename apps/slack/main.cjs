@@ -3,7 +3,6 @@ const path = require("node:path")
 const fs = require("node:fs")
 const { BASE, START, PARTITION, classifyUrl, returnAfterLogin, roomLink, unreadFor, roomTitle, notificationCandidates, alertHours, requestDecision } = require("./rules.cjs")
 const { connectUpdater } = require("./updater.cjs")
-const { connectNavigation } = require("./navigation.cjs")
 const { createCircuitBreaker } = require("./circuit-breaker.cjs")
 
 app.setName("슬랙")
@@ -66,7 +65,6 @@ function makeWindow() {
   win.webContents.on("will-navigate", navigation)
   win.webContents.on("will-redirect", navigation)
   win.webContents.on("will-attach-webview", e => e.preventDefault())
-  connectNavigation(win, { openExternal, show, loadURL })
   win.webContents.on("did-finish-load", poll)
   win.webContents.on("will-prevent-unload", event => {
     if (quitting) { event.preventDefault(); return }
