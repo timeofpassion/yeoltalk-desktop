@@ -14,8 +14,8 @@ function harness() {
     setBadgeCount: n => badge.push(n), getLoginItemSettings: () => ({ openAtLogin: false }) }, Notification,
     Menu: { buildFromTemplate: rows => rows, setApplicationMenu() {} },
     nativeImage: { createFromPath: filename => ({ filename, resize() { return this } }) } }
-  const root = path.resolve(__dirname, ".."), sandbox = { fixture: { win, tray }, __dirname: root, console, Map, Date, AbortSignal,
-    require: id => id === "electron" ? electron : id === "./rules.cjs" ? { ...require("../rules.cjs"), alertHours: () => true } : id === "./updater.cjs" ? {} : id === "./navigation.cjs" ? require("../navigation.cjs") : require(id) }
+  const root = path.resolve(__dirname, ".."), sandbox = { fixture: { win, tray }, __dirname: root, console, Map, Date, URL, AbortSignal,
+    require: id => id === "electron" ? electron : id === "./rules.cjs" ? { ...require("../rules.cjs"), alertHours: () => true } : id.startsWith("./") ? require(path.join(root, id)) : require(id) }
   vm.runInNewContext(fs.readFileSync(path.join(root, "main.cjs"), "utf8") +
     "\nmainWindow=fixture.win;tray=fixture.tray;this.api={poll,refreshMenus};", sandbox)
   return { ...sandbox.api, badge, overlays, urls, notices, fetches, setRows: value => { rows = value }, fail: () => { ok = false }, menu: () => contextMenu }
