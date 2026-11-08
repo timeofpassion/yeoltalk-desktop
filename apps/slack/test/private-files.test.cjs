@@ -15,9 +15,9 @@ test("첨부 새창/일반링크는 현재 로그인 세션으로 다운로드�
   let popup
   const win = { isDestroyed: () => false, isMinimized: () => false, show() {}, focus() {}, once() {}, on() {},
     loadURL: async url => urls.push(url), webContents: { setWindowOpenHandler: handler => { popup = handler }, on: (name, handler) => { listeners[name] = handler }, downloadURL: url => downloads.push(url) } }
-  const electron = { app: { setName() {}, setPath() {}, getPath: () => "fixture", setAppUserModelId() {}, requestSingleInstanceLock: () => false, quit() {} },
+  const electron = { app: { setName() {}, setPath() {}, getPath: () => "fixture", getVersion: () => "0.1.7", setAppUserModelId() {}, requestSingleInstanceLock: () => false, quit() {} },
     BrowserWindow: function () { return win }, shell: { openExternal: async url => external.push(url) } }
-  const root = path.resolve(__dirname, ".."), sandbox = { __dirname: root, require: id => id === "electron" ? electron : id === "./rules.cjs" ? rules : id === "./updater.cjs" ? {} : id === "./navigation.cjs" ? require("../navigation.cjs") : require(id) }
+  const root = path.resolve(__dirname, ".."), sandbox = { URL, __dirname: root, require: id => id === "electron" ? electron : id.startsWith("./") ? require(path.join(root, id)) : require(id) }
   vm.runInNewContext(fs.readFileSync(path.join(root, "main.cjs"), "utf8") + "\nthis.make=makeWindow;", sandbox)
   sandbox.make()
   assert.equal(popup({ url: file }).action, "deny")

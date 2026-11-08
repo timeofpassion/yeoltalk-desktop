@@ -19,7 +19,7 @@ app.whenReady().then(async () => {
   const server = http.createServer((_req, res) => { res.setHeader("content-type", "text/html; charset=utf-8"); res.end(fixture) })
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve))
   const win = new BrowserWindow({ width: 1360, height: 900, show: false, useContentSize: true,
-    webPreferences: { preload: path.resolve(__dirname, "../preload.cjs"), partition: "slack-frame-fixture", sandbox: true, contextIsolation: true, nodeIntegration: false } })
+    webPreferences: { preload: path.resolve(__dirname, "../preload.cjs"), additionalArguments: ["--app-version=" + require("../package.json").version], partition: "slack-frame-fixture", sandbox: true, contextIsolation: true, nodeIntegration: false } })
   const errors = [], rows = []
   win.webContents.on("preload-error", (_e, _p, error) => errors.push(error.message))
   try {
@@ -65,7 +65,7 @@ app.whenReady().then(async () => {
     const taskFrameLoaded = await win.webContents.executeJavaScript(`new Promise(resolve=>{const f=document.createElement('iframe');f.title='업무 원본 검증';f.onload=()=>resolve(f.contentDocument.body.textContent.includes('채팅 본문 영역'));f.onerror=()=>resolve(false);f.src='/tasks';document.body.append(f);setTimeout(()=>resolve(false),5000)})`)
     assert.equal(taskFrameLoaded, true)
     const navigationActions = [], oldHandlerActions = []
-    connectNavigation(win, { openExternal: url => navigationActions.push(url), show: (_win, url) => navigationActions.push(url), safeLog() {} })
+    connectNavigation(win, { openExternal: url => navigationActions.push(url), show: (_win, url) => navigationActions.push(url), loadURL: (_win, url) => navigationActions.push(url) })
     win.webContents.on("did-navigate-in-page", (_event, url) => {
       if (url.startsWith(BASE + "/tasks")) oldHandlerActions.push(url)
     })

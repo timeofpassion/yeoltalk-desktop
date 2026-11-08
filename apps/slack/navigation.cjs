@@ -1,9 +1,9 @@
 const { START, classifyUrl, returnAfterLogin } = require("./rules.cjs")
 
-function connectNavigation(win, { openExternal, show, safeLog }) {
+function connectNavigation(win, { openExternal, show, loadURL }) {
   const restoreHome = (_event, url) => {
     const target = returnAfterLogin(url)
-    if (target) win.loadURL(target).catch(() => safeLog("login-return-failed"))
+    if (target) loadURL(win, target)
     else if (classifyUrl(url) !== "internal" && !url.startsWith("file:")) {
       openExternal(url)
       show(win, START)

@@ -1,9 +1,10 @@
-const { app, BrowserWindow, Tray, Menu, Notification, nativeImage, shell, dialog, session } = require("electron")
+const { app, BrowserWindow, Tray, Menu, Notification, nativeImage, shell, dialog, session, powerMonitor } = require("electron")
 const path = require("node:path")
 const fs = require("node:fs")
 const { BASE, START, PARTITION, classifyUrl, returnAfterLogin, roomLink, unreadFor, roomTitle, notificationCandidates, alertHours, requestDecision } = require("./rules.cjs")
 const { connectUpdater } = require("./updater.cjs")
 const { connectNavigation } = require("./navigation.cjs")
+const { createCircuitBreaker } = require("./circuit-breaker.cjs")
 
 app.setName("슬랙")
 // 기존 열톡/웹브라우저와 분리된 PC별 프로필. 비밀번호를 따로 저장하지 않는다.
@@ -15,20 +16,30 @@ let unreadRooms = [], names = new Map(), namesFetchedAt = 0
 function safeLog(event) {
   try { fs.appendFileSync(path.join(app.getPath("userData"), "app.log"), `${new Date().toISOString()} ${event}\n`) } catch {}
 }
+const allowNavigation = createCircuitBreaker({ log: safeLog })
+function loadURL(win, url) {
+  if (!win || win.isDestroyed() || !allowNavigation("load", url)) return
+  win.loadURL(url).catch(() => safeLog("navigation-failed"))
+}
+function reload() {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  if (allowNavigation("load", mainWindow.webContents.getURL())) mainWindow.reload()
+}
 function show(win, url) {
   if (!win || win.isDestroyed()) return
-  if (url) win.loadURL(returnAfterLogin(url) || url).catch(() => safeLog("navigation-failed"))
+  if (url) loadURL(win, returnAfterLogin(url) || url)
   if (win.isMinimized()) win.restore()
   win.show(); win.focus()
 }
 function openExternal(url) {
-  if (classifyUrl(url) === "external") shell.openExternal(url).catch(() => safeLog("external-open-failed"))
+  if (classifyUrl(url) === "external" && allowNavigation("external", url)) shell.openExternal(url).catch(() => safeLog("external-open-failed"))
 }
 function makeWindow() {
   const win = new BrowserWindow({
     width: 1360, height: 900, minWidth: 360, minHeight: 600,
     title: "슬랙", icon: iconPath, backgroundColor: "#fff9f8", show: false,
     webPreferences: { partition: PARTITION, preload: path.join(__dirname, "preload.cjs"),
+      additionalArguments: ["--app-version=" + app.getVersion()],
       nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
   })
   win.once("ready-to-show", () => show(win))
@@ -44,16 +55,21 @@ function makeWindow() {
     }
     return { action: "deny" }
   })
-  const navigation = (e, url) => {
+  const navigation = (e, url, _isInPlace, isMainFrame) => {
+    if (e.isMainFrame === false || isMainFrame === false) return
+    // 하위 프레임이 상위 창을 이동시키는 요청도 부수 효과 없이 차단한다.
+    if (e.initiator && e.initiator !== win.webContents.mainFrame) { e.preventDefault(); return }
+    url = e.url || url
     if (classifyUrl(url) === "attachment") { e.preventDefault(); win.webContents.downloadURL(url) }
     else if (classifyUrl(url) !== "internal") { e.preventDefault(); openExternal(url) }
   }
   win.webContents.on("will-navigate", navigation)
   win.webContents.on("will-redirect", navigation)
   win.webContents.on("will-attach-webview", e => e.preventDefault())
-  connectNavigation(win, { openExternal, show, safeLog })
+  connectNavigation(win, { openExternal, show, loadURL })
   win.webContents.on("did-finish-load", poll)
   win.webContents.on("will-prevent-unload", event => {
+    if (quitting) { event.preventDefault(); return }
     const answer = dialog.showMessageBoxSync(win, { type: "question", buttons: ["계속 작성", "이동"], defaultId: 0, cancelId: 0,
       message: "작성 중인 내용을 확인해 주세요", detail: "저장하지 않은 내용이 있을 수 있습니다." })
     if (answer === 1) event.preventDefault()
@@ -66,7 +82,7 @@ function makeWindow() {
       win.loadFile(path.join(__dirname, "assets", "offline.html")).catch(() => safeLog("offline-page-failed"))
     }
   })
-  win.loadURL(START).catch(() => safeLog("page-load-failed"))
+  loadURL(win, START)
   return win
 }
 function checkMenu() {
@@ -93,7 +109,7 @@ function refreshMenus() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     { label: "슬랙", submenu: items },
     { label: "편집", submenu: [{ role: "undo" }, { role: "redo" }, { type: "separator" }, { role: "cut" }, { role: "copy" }, { role: "paste" }, { role: "selectAll" }] },
-    { label: "보기", submenu: [{ role: "reload" }, { role: "resetZoom" }, { role: "zoomIn" }, { role: "zoomOut" }, { role: "togglefullscreen" }] },
+    { label: "보기", submenu: [{ label: "새로고침", accelerator: "CmdOrCtrl+R", click: reload }, { role: "resetZoom" }, { role: "zoomIn" }, { role: "zoomOut" }, { role: "togglefullscreen" }] },
   ]))
 }
 function updateUnread(rooms) {
@@ -160,9 +176,24 @@ else {
     tray.on("click", () => show(mainWindow))
     if (app.isPackaged) {
       const { autoUpdater } = require("electron-updater")
-      updates = connectUpdater(autoUpdater, { changed: refreshMenus, log: safeLog })
+      updates = connectUpdater(autoUpdater, {
+        changed: refreshMenus, log: safeLog, currentVersion: app.getVersion(),
+        getIdleTime: () => powerMonitor.getSystemIdleTime(),
+        isHidden: () => !mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible(),
+        beforeInstall: () => { quitting = true },
+        installFailed: () => { quitting = false },
+        notify: body => {
+          if (Notification.isSupported()) new Notification({ title: "슬랙", body, icon: iconPath }).show()
+        },
+        readPolicy: async () => {
+          const response = await chatSession.fetch(`${BASE}/api/desktop/policy`, {
+            method: "GET", credentials: "omit", cache: "no-store", signal: AbortSignal.timeout(5000),
+          })
+          return response.ok ? response.json() : null
+        },
+      })
       setTimeout(() => updates.check(), 15000)
-      setInterval(() => updates.check(), 60 * 60 * 1000).unref()
+      setInterval(() => updates.check(), 10 * 60 * 1000).unref()
     }
     refreshMenus()
     setInterval(poll, 15000).unref()
