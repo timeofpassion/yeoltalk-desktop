@@ -10,7 +10,7 @@ const originalPath = app.getPath.bind(app)
 app.getPath = name => name === "appData" ? evidence : originalPath(name)
 let unread = 4, auth = true
 const rows = () => [{ id: "fixture-room", kind: "dm", otherId: "fixture-peer", name: "fixture-self:fixture-peer", unread: unread / 2, slackUnread: unread / 2, mentioned: 0, hidden: false, muted: false, lastAt: "2026-10-30T09:00:00Z" }]
-const html = url => `<!doctype html><html lang="ko"><meta charset="utf-8"><style>body{font:16px sans-serif;margin:0}main{padding:24px}button{padding:12px;margin:8px;border:1px solid #888;background:white}h1{color:#E63329}</style><div data-chrome>대표실·인트라넷 알림4개(시험 데이터)</div><main data-main><h1>슬랙 · 대화</h1><p>격리 검증 화면 · 실제 직원/대화 아님</p><p id="room">${url.searchParams.get("c") || url.pathname}</p><p id="message">${url.searchParams.get("m") || ""}</p><button id="talk" onclick="window.open('${BASE}/talk/fixture-legacy?thread=msg1')">기존 열톡 방 링크</button><button id="read" onclick="fetch('/api/chat/channels/fixture-room/read',{method:'POST'})">대화 읽기</button></main></html>`
+const html = url => `<!doctype html><html lang="ko"><meta charset="utf-8"><title>인트라넷 시험</title><style>body{font:16px sans-serif;margin:0}main{padding:24px}button{padding:12px;margin:8px;border:1px solid #888;background:white}h1{color:#E63329}</style><div data-chrome>대표실·인트라넷 알림4개(시험 데이터)</div><main data-main><h1>슬랙 · 대화</h1><p>격리 검증 화면 · 실제 직원/대화 아님</p><p id="room">${url.searchParams.get("c") || url.pathname}</p><p id="message">${url.searchParams.get("m") || ""}</p><button id="talk" onclick="window.open('${BASE}/talk/fixture-legacy?thread=msg1')">기존 열톡 방 링크</button><button id="read" onclick="fetch('/api/chat/channels/fixture-room/read',{method:'POST'})">대화 읽기</button></main></html>`
 app.whenReady().then(() => {
   session.fromPartition(PARTITION).protocol.handle("https", request => {
     const url = new URL(request.url)
@@ -22,7 +22,7 @@ app.whenReady().then(() => {
 })
 const entry = path.resolve(__dirname, "../main.cjs"), runtime = new Module(entry, module)
 runtime.filename = entry; runtime.paths = Module._nodeModulePaths(path.dirname(entry))
-runtime._compile(fs.readFileSync(entry, "utf8") + "\nmodule.exports={poll,state:()=>({mainWindow,unreadRooms})};", entry)
+runtime._compile(fs.readFileSync(entry, "utf8") + "\nmodule.exports={poll:()=>{menuSignature='';return poll()},state:()=>({mainWindow,unreadRooms,polling,pollQueued})};", entry)
 const api = runtime.exports
 async function until(predicate) {
   const start = Date.now()
@@ -37,6 +37,7 @@ app.whenReady().then(async () => {
   const nativeOverlay = win.setOverlayIcon.bind(win)
   win.setOverlayIcon = (image, label) => { overlay.push({ empty: image ? image.isEmpty() : true, label }); nativeOverlay(image, label) }
   await api.poll()
+  await until(() => !api.state().polling && !api.state().pollQueued)
   const unreadMenu = () => Menu.getApplicationMenu().items[0].submenu.items.find(x => x.label.startsWith("안 읽은 대화"))
   await until(() => unreadMenu()?.submenu?.items[0]?.label.includes("시험 직원"))
   assert.match(unreadMenu().label, /4개 메시지/)
@@ -46,11 +47,14 @@ app.whenReady().then(async () => {
   await until(() => !win.webContents.isLoading() && win.webContents.getURL().includes("c=fixture-room"))
   assert.equal(win.webContents.getURL(), BASE + "/slack?c=fixture-room")
   await win.webContents.executeJavaScript("document.getElementById('talk').click()")
-  await until(() => !win.webContents.isLoading() && win.webContents.getURL().includes("c=fixture-legacy"))
-  assert.equal(win.webContents.getURL(), BASE + "/slack?c=fixture-legacy&m=msg1")
-  assert.equal(await win.webContents.executeJavaScript("document.getElementById('message').textContent"), "msg1")
-  assert.equal(BrowserWindow.getAllWindows().length, 1)
-  assert.equal(win.getTitle(), "슬랙")
+  await until(() => BrowserWindow.getAllWindows().length === 2)
+  const child = BrowserWindow.getAllWindows().find(w => w !== win)
+  await until(() => !child.webContents.isLoading())
+  assert.equal(child.webContents.getURL(), BASE + "/slack?c=fixture-legacy&m=msg1")
+  assert.equal(child.webContents.session, win.webContents.session)
+  assert.equal(await child.webContents.executeJavaScript("document.getElementById('message').textContent"), "msg1")
+  assert.equal(win.getTitle(), "인트라넷 시험")
+  child.destroy()
   assert.equal(Menu.getApplicationMenu().items[0].submenu.items.some(x => x.label === "열톡 열기"), false)
   await win.loadURL(BASE + "/talk/fixture-room?thread=msg2")
   assert.equal(win.webContents.getURL(), BASE + "/slack?c=fixture-room&m=msg2")
@@ -74,7 +78,7 @@ app.whenReady().then(async () => {
   auth = false; unread = 4; await api.poll()
   assert.equal(unreadMenu().enabled, false)
   const result = { fixtureOnly: true, actualEmployeeLogin: false, nativeWindowsOverlayImageLoaded: true, unread4ToRoom: true,
-    oneSlackWindow: true, legacyTalkPopupOpensSameRoomInSlack: true, legacyMainFrameRedirectsToSlack: true,
+    sameSessionChildWindow: true, legacyTalkPopupOpensSlack: true, legacyMainFrameRedirectsToSlack: true,
     legacyThreadMappedToMessageMInPopupAndMainFrame: true, existingMessageMWinsOverThread: true,
     noSeparateTalkMenu: true, readClearsSlackBadgeViaNetworkHook: true, expiredSessionClearsRoomMenu: true, screenshot }
   fs.writeFileSync(path.join(evidence, "result.json"), JSON.stringify(result, null, 2))

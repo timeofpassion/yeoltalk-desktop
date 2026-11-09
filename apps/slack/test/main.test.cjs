@@ -4,7 +4,7 @@ const vm = require("node:vm"), fs = require("node:fs"), path = require("node:pat
 const { BASE, START } = require("../rules.cjs")
 
 async function fixture() {
-  const calls = { load: [], external: [], reload: 0, logs: [], timers: [], fetch: [], checks: 0 }
+  const calls = { load: [], external: [], reload: 0, logs: [], timers: [], fetch: [], checks: 0, requests: [] }
   let windowOptions, popup, appMenu, updaterOptions, response = { ok: true, json: async () => ({ minVersion: "0.1.7" }) }
   const contents = new EventEmitter(), win = new EventEmitter(), app = new EventEmitter()
   Object.assign(contents, {
@@ -14,7 +14,8 @@ async function fixture() {
   Object.assign(win, {
     webContents: contents, isDestroyed: () => false, isMinimized: () => false,
     isVisible: () => true, show() {}, focus() {},
-    loadURL: async url => calls.load.push(url), reload: () => { calls.reload++ },
+    loadURL: async url => { calls.request({ url, resourceType: "mainFrame" }, d => { if (!d.cancel) calls.load.push(url) }) },
+    reload: () => { calls.request({ url: START, resourceType: "mainFrame" }, d => { if (!d.cancel) calls.reload++ }) },
   })
   Object.assign(app, {
     isPackaged: true, setName() {}, setPath() {}, getPath: () => "fixture", getVersion: () => "7.8.9",
@@ -23,11 +24,11 @@ async function fixture() {
   })
   const chatSession = {
     setPermissionRequestHandler() {},
-    webRequest: { onBeforeRequest() {}, onBeforeSendHeaders() {}, onCompleted() {} },
+    webRequest: { onBeforeRequest(fnFilter, fn) { calls.request = fn }, onBeforeSendHeaders() {}, onCompleted() {} },
     fetch: async (...args) => { calls.fetch.push(args); return response },
   }
   const electron = {
-    app, BrowserWindow: function (options) { windowOptions = options; return win },
+    app, BrowserWindow: Object.assign(function (options) { windowOptions = options; return win }, { getFocusedWindow: () => win, getAllWindows: () => [win] }),
     Tray: function () { return { on() {}, setContextMenu() {} } },
     Menu: { buildFromTemplate: value => value, setApplicationMenu: value => { appMenu = value } },
     nativeImage: { createFromPath: () => ({ resize() { return this } }) },
@@ -90,14 +91,14 @@ test("iframe의 SPA·서버 리다이렉트·상위 이동 시도가 브라우�
   f.contents.emit("will-navigate", { isMainFrame: true, initiator: {}, preventDefault() { prevented = true } }, `${BASE}/tasks`)
   assert.equal(prevented, true); assert.deepEqual(f.calls.external, []); assert.equal(f.calls.load.length, initial)
   f.contents.emit("will-redirect", { isMainFrame: true, url: `${BASE}/tasks`, preventDefault() {} })
-  assert.deepEqual(f.calls.external, [`${BASE}/tasks`])
+  assert.deepEqual(f.calls.external, [])
 })
 test("main의 새창·새로고침 모두 같은 출처 차단기를 거침", async () => {
   const f = await fixture()
   for (let i = 0; i < 30; i++) {
     f.popup({ url: `${BASE}/tasks/${i}` })
   }
-  assert.equal(f.calls.external.length, 5)
+  assert.equal(f.calls.external.length, 0)
   assert.ok(f.calls.load.length <= 10)
   const loads = f.calls.load.length
   f.reload(); assert.equal(f.calls.reload, 0)
@@ -114,11 +115,12 @@ test("이동이 끝난 뒤에는 어떤 주소로 가도 다시 열거나 브라
   f.contents.emit("did-navigate", {}, "https://example.org/")
   assert.deepEqual(f.calls.load, [START]); assert.deepEqual(f.calls.external, []); assert.equal(f.calls.reload, 0)
 })
-test("첫 화면 loadURL과 메뉴 reload가 하나의 10회 한도를 공유", async () => {
+test("첫 화면 loadURL과 메뉴 reload가 같은 경로 10초 5회 한도를 공유", async () => {
   const f = await fixture()
   for (let i = 0; i < 20; i++) f.reload()
-  assert.deepEqual(f.calls.load, [START]); assert.equal(f.calls.reload, 9)
+  assert.deepEqual(f.calls.load, [START]); assert.equal(f.calls.reload, 4)
   assert.ok(f.calls.logs.some(log => log.includes("navigation-circuit-open load")))
+  assert.ok(f.calls.logs.some(log => log.includes("navigation-document-cancelled circuit-blocked")))
 })
 test("자동 적용 시 창 닫기·작성 중 확인 대화상자가 종료를 막지 않음", async () => {
   const f = await fixture()
@@ -132,4 +134,15 @@ test("자동 적용 시 창 닫기·작성 중 확인 대화상자가 종료를 
   f.win.hide = () => {}
   f.win.emit("close", { preventDefault() { closePrevented = true } })
   assert.equal(closePrevented, true)
+})
+
+test("표시 이름을 바꾸어도 기존 앱 식별자·세션·업데이트·자동실행 파일명 유지", () => {
+  const pkg = require("../package.json")
+  assert.equal(pkg.version, "0.2.0")
+  assert.equal(pkg.build.appId, "com.timeofpassion.slack")
+  assert.equal(pkg.build.productName, "열정의시간")
+  assert.equal(pkg.build.nsis.shortcutName, "열정의시간")
+  assert.equal(pkg.build.win.executableName, "슬랙")
+  assert.equal(pkg.build.publish[0].url, "https://github.com/timeofpassion/yeoltalk-desktop/releases/download/passion-slack-updates/")
+  assert.equal(require("../rules.cjs").PARTITION, "persist:passion-slack")
 })

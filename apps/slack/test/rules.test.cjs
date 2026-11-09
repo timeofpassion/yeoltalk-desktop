@@ -1,15 +1,15 @@
 const test = require("node:test"), assert = require("node:assert/strict")
 const { BASE, START, PARTITION, classifyUrl, returnAfterLogin, roomLink, notificationCandidates, alertHours, requestDecision } = require("../rules.cjs")
 
-test("앱 안에서는 슬랙·열톡·로그인만 열고 문서 등은 본인 브라우저로 연다", () => {
+test("같은 출처의 모든 화면은 서버 권한으로 앱 안에서 연다", () => {
   for (const p of ["/slack?c=mine", "/talk", "/talk/room123", "/login", "/api/auth/callback/credentials"]) assert.equal(classifyUrl(BASE + p), "internal")
-  for (const p of ["/ceo", "/best3", "/control", "/settings", "/payroll", "/finance/bank", "/slack-other"]) assert.equal(classifyUrl(BASE + p), "blocked")
-  for (const p of ["/clients/1", "/approvals/my-doc", "/tasks/my-task", "/docs/my-doc"]) assert.equal(classifyUrl(BASE + p), "external")
+  for (const p of ["/ceo", "/best3", "/control", "/settings", "/payroll", "/finance/bank", "/slack-other"]) assert.equal(classifyUrl(BASE + p), "internal")
+  for (const p of ["/clients/1", "/approvals/my-doc", "/tasks/my-task", "/docs/my-doc"]) assert.equal(classifyUrl(BASE + p), "internal")
 })
 
 test("페이지 이동과 SPA 서버 렌더링도 창 경계를 지키되 채팅 API·파일은 유지", () => {
-  assert.deepEqual(requestDecision({ url: BASE + "/dashboard", resourceType: "mainFrame" }), { redirectURL: START })
-  assert.deepEqual(requestDecision({ url: BASE + "/ceo?_rsc=abc", resourceType: "xhr", requestHeaders: { RSC: "1" } }), { cancel: true })
+  assert.deepEqual(requestDecision({ url: BASE + "/dashboard", resourceType: "mainFrame" }), {})
+  assert.deepEqual(requestDecision({ url: BASE + "/ceo?_rsc=abc", resourceType: "xhr", requestHeaders: { RSC: "1" } }), {})
   assert.deepEqual(requestDecision({ url: BASE + "/api/chat/inbox", resourceType: "xhr" }), {})
   assert.deepEqual(requestDecision({ url: "https://files.example.org/a.pdf", resourceType: "xhr" }), {})
   assert.deepEqual(requestDecision({ url: BASE + "/slack?c=mine", resourceType: "mainFrame" }), {})
@@ -17,9 +17,9 @@ test("페이지 이동과 SPA 서버 렌더링도 창 경계를 지키되 채팅
 test("내부 슬랙·열톡은 같은 서버를 쓰고 기존 열톡 프로필과 분리", () => {
   assert.equal(START, BASE + "/slack"); assert.equal(PARTITION, "persist:passion-slack")
 })
-test("로그인 후 대시보드에서 통합 슬랙으로 복귀", () => {
-  assert.equal(returnAfterLogin(BASE + "/dashboard"), START)
-  assert.equal(returnAfterLogin(BASE + "/dashboard", true), START)
+test("일반 홈 이동은 슬랙으로 되돌리지 않는다", () => {
+  assert.equal(returnAfterLogin(BASE + "/dashboard"), null)
+  assert.equal(returnAfterLogin(BASE + "/dashboard", true), null)
   assert.equal(returnAfterLogin(BASE + "/login"), null)
   assert.equal(returnAfterLogin(BASE + "/slack?c=room"), null)
 })
@@ -70,27 +70,56 @@ test("기존 근무시간과 동일한 한국시간 평일09~19시 알림", () =
 })
 
 
-test("업무 원본 프레임의 필터·저장 요청은 허용하고 상위 창·다른 경로는 기존 정책 유지", () => {
+test("업무·대표실·재무의 문서와 RSC 요청을 허용한다", () => {
   for (const p of ["/tasks?_rsc=fixture", "/tasks/test-task?_rsc=fixture", "/tasks?status=DONE"]) {
     assert.deepEqual(requestDecision({url:BASE+p, resourceType:"xhr", requestHeaders:{RSC:"1"}}), {})
   }
-  assert.deepEqual(requestDecision({url:BASE+"/tasks",resourceType:"mainFrame"}), {cancel:true})
+  assert.deepEqual(requestDecision({url:BASE+"/tasks",resourceType:"mainFrame"}), {})
   for (const p of ["/tasks-other?_rsc=fixture", "/ceo?_rsc=fixture", "/finance/bank?_rsc=fixture"]) {
-    assert.deepEqual(requestDecision({url:BASE+p,resourceType:"xhr",requestHeaders:{RSC:"1"}}), {cancel:true})
+    assert.deepEqual(requestDecision({url:BASE+p,resourceType:"xhr",requestHeaders:{RSC:"1"}}), {})
   }
   assert.deepEqual(requestDecision({url:"https://example.org/tasks?_rsc=fixture",resourceType:"xhr"}), {cancel:true})
 })
 
-test("화면 안 이동(RSC)으로 로그인 완료·옛 열톡 주소에 가면 취소해 문서 요청에서 한 번만 슬랙으로 바꾼다", () => {
-  for (const p of ["/?_rsc=a", "/dashboard?_rsc=a", "/talk?_rsc=a", "/talk/room1?_rsc=a"]) {
+test("옛 열톡 RSC만 취소하고 문서 요청에서 한 번 변환한다", () => {
+  for (const p of ["/talk?_rsc=a", "/talk/room1?_rsc=a"]) {
     assert.deepEqual(requestDecision({ url: BASE + p, resourceType: "xhr", requestHeaders: { RSC: "1" } }), { cancel: true })
   }
-  assert.deepEqual(requestDecision({ url: BASE + "/dashboard", resourceType: "mainFrame" }), { redirectURL: START })
+  assert.deepEqual(requestDecision({ url: BASE + "/dashboard", resourceType: "mainFrame" }), {})
   assert.deepEqual(requestDecision({ url: BASE + "/slack?_rsc=a", resourceType: "xhr", requestHeaders: { RSC: "1" } }), {})
 })
-test("업무 화면 안 이동은 하위 프레임만 허용하고 슬랙 창 자체가 보내면 취소한다", () => {
+test("업무 RSC는 상위·하위 프레임 모두 허용한다", () => {
   const rsc = { url: BASE + "/tasks?status=DONE&_rsc=a", resourceType: "xhr", requestHeaders: { RSC: "1" } }
   assert.deepEqual(requestDecision({ ...rsc, frame: { parent: {} } }), {})
-  assert.deepEqual(requestDecision({ ...rsc, frame: { parent: null } }), { cancel: true })
+  assert.deepEqual(requestDecision({ ...rsc, frame: { parent: null } }), {})
   assert.deepEqual(requestDecision({ ...rsc, frame: { get parent() { throw new Error("닫힌 프레임") } } }), {})
+})
+
+test("로그인 복귀는 창별 한 번만, 콜백 검증·API·홈 이동 유지", () => {
+  const { createLoginReturn } = require("../rules.cjs")
+  const request = (fn, p, type = "mainFrame") => fn({url: BASE + p, resourceType: type})
+  const login = createLoginReturn()
+  request(login, "/approvals/doc?tab=mine")
+  request(login, "/login")
+  assert.equal(request(login, "/api/chat/inbox", "xhr"), null)
+  assert.deepEqual(request(login, "/dashboard?_rsc=a", "xhr"), {cancel:true})
+  assert.deepEqual(request(login, "/dashboard"), {redirectURL:BASE+"/approvals/doc?tab=mine"})
+  assert.equal(request(login, "/dashboard"), null)
+  assert.equal(request(login, "/"), null)
+  const fresh = createLoginReturn()
+  request(fresh, "/login?callbackUrl=https%3A%2F%2Fevil.test")
+  assert.deepEqual(request(fresh, "/dashboard"), {redirectURL:START})
+  const direct = createLoginReturn()
+  request(direct, "/login?callbackUrl=%2Fceo")
+  assert.deepEqual(request(direct, "/"), {redirectURL:BASE+"/ceo"})
+})
+
+test("SPA 목적지는 로그인 복귀에 보존하되 로그인 프리페치는 무시", () => {
+  const login = require("../rules.cjs").createLoginReturn()
+  const rsc = (p, headers = {}) => login({url:BASE+p,resourceType:"xhr",requestHeaders:{RSC:"1",...headers}})
+  rsc("/login?_rsc=a", {"Next-Router-Prefetch":"1"})
+  assert.equal(rsc("/ceo?_rsc=a"), null)
+  rsc("/login?_rsc=b")
+  assert.deepEqual(rsc("/dashboard?_rsc=c"), {cancel:true})
+  assert.deepEqual(login({url:BASE+"/dashboard",resourceType:"mainFrame"}), {redirectURL:BASE+"/ceo"})
 })
